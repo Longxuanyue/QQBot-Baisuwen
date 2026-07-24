@@ -50,8 +50,12 @@ baisuwen/
    - 将文件放入项目根目录下的 `models/` 文件夹
    - 在 `.env` 中配置 `TTS_MODEL_PATH` 和 `TTS_CONFIG_PATH`
 
-3. **NoneBot 插件** — 本项目依赖以下外部插件，请从 NoneBot 插件商店安装：
+3. **NoneBot 插件** — 本项目可选以下外部插件，请从 NoneBot 插件商店安装：
    - [nonebot-plugin-skland](https://github.com/FrostN0v0/nonebot-plugin-skland) — 明日方舟森空岛插件-通过森空岛查询游戏数据
+
+4. **修改 Bot 人设** — 仓库中的 `src/plugins/nonebot_plugin_update_baisuwen/personality_traits.json` 为作者私设，请替换为你自己的角色设定：
+   - 编辑该文件，修改角色名称、性格、背景故事、口癖等内容
+   - 格式为 JSON，字段含义参见文件内注释
 
 ### 环境要求
 
