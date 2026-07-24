@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="多游戏活动进度：作战、卡池、网页活动一览，自动抓取官方公告解析起止时间。" />
+  <meta name="theme-color" content="#0a0d13" />
+  <meta property="og:title" content="活动进度" />
+  <meta property="og:description" content="多游戏进行中的活动与卡池进度" />
+  <meta property="og:type" content="website" />
+  <title>活动进度</title>
+  <link rel="icon" href="./icons/custom.svg" type="image/svg+xml" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css?v=20260715c" />
+  <link rel="stylesheet" href="./themes.css?v=20260715c" />
+</head>
+<body>
+  <div class="board" id="board">
+    <div class="top-sticky">
+      <header class="site-head">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div class="brand-text">
+            <h1 class="brand-name">活动进度</h1>
+            <p class="brand-tag">多游戏作战 · 卡池 · 网页活动</p>
+          </div>
+        </div>
+        <p class="updated" id="updatedAt">加载中…</p>
+      </header>
+
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <label class="search-wrap">
+            <span class="sr-only">搜索</span>
+            <input type="search" id="search" placeholder="搜索游戏 / 活动…  (/ 或 Ctrl+K)" autocomplete="off" />
+          </label>
+          <span class="meta" id="meta">加载中…</span>
+        </div>
+        <div class="filters" id="filters">
+          <label class="chip"><input type="checkbox" data-cat="combat" checked /> 作战</label>
+          <label class="chip"><input type="checkbox" data-cat="gacha" checked /> 卡池</label>
+          <label class="chip"><input type="checkbox" data-cat="web" checked /> 网页</label>
+          <label class="chip"><input type="checkbox" data-cat="event" checked /> 活动</label>
+          <label class="chip subtle" title="隐藏当前筛选下无活动的游戏"><input type="checkbox" id="hideEmpty" checked /> 藏空</label>
+          <button type="button" id="btnFoldAll" class="btn ghost desk-only" title="全部折叠">折叠</button>
+          <button type="button" id="btnExpandAll" class="btn ghost desk-only" title="全部展开">展开</button>
+          <button type="button" id="btnGames" class="btn ghost" title="显示/自定义游戏">游戏</button>
+          <button type="button" id="btnRefresh" class="btn" title="重新加载数据">刷新</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="gamePicker" class="game-picker hidden"></div>
+
+    <main id="games" class="games"></main>
+    <p id="empty" class="empty hidden">当前筛选下没有活动</p>
+
+    <footer class="site-foot">
+      <p>数据来自各游戏官方公告 / 公开日历，时段可能为估时，以游戏内为准。</p>
+      <p>自动更新：本地 <code>python scripts/update.py</code> · 或 GitHub Actions 定时任务。</p>
+      <p><a href="https://github.com/hualeide/game-event-progress" target="_blank" rel="noopener">源码与说明</a></p>
+    </footer>
+  </div>
+
+  <div id="detail" class="detail hidden" aria-hidden="true">
+    <button type="button" class="detail-backdrop" data-close-detail aria-label="关闭"></button>
+    <aside class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <header class="detail-head">
+        <button type="button" class="detail-close" data-close-detail>关闭</button>
+        <p class="detail-game" id="detailGame"></p>
+        <h2 class="detail-title" id="detailTitle"></h2>
+        <div class="detail-tags" id="detailTags"></div>
+      </header>
+      <div class="detail-banner" id="detailBanner"></div>
+      <div class="detail-body" id="detailBody"></div>
+      <footer class="detail-foot" id="detailFoot"></footer>
+    </aside>
+  </div>
+
+  <button type="button" id="toTop" class="to-top hidden" title="回到顶部" aria-label="回到顶部">↑</button>
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

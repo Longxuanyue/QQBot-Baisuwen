@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}白苏文 Bot 管理后台{% endblock %}</title>
+    <link rel="stylesheet" href="/webui/static/css/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="app-layout">
+        <!-- 侧边栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <a href="/webui/dashboard" class="sidebar-logo">🤖 白苏文</a>
+                <span class="sidebar-subtitle">管理后台</span>
+            </div>
+            <nav class="sidebar-nav">
+                {% for item in nav %}
+                <a href="{{ item.href }}" class="nav-item {% if active_page == item.href.split('/')[-1] %}active{% endif %}">
+                    <span class="nav-icon">{{ item.icon }}</span>
+                    <span class="nav-label">{{ item.label }}</span>
+                </a>
+                {% endfor %}
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <span>👤 {{ user_id }}</span>
+                    <span class="role-badge {{ role }}">{{ role }}</span>
+                </div>
+                {% if has_restart_pending %}
+                <div class="restart-banner">⚠️ 有待重启的更改</div>
+                {% endif %}
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            {% if has_restart_pending %}
+            <div class="restart-warning">
+                ⚠️ 有未生效的更改，需要
+                <button class="btn btn-sm btn-warning" onclick="triggerRestart()">重启 Bot</button>
+                才能生效
+            </div>
+            {% endif %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- 重启确认弹窗 -->
+    <div id="restart-modal" class="modal" style="display:none">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <h3>⚠️ 确认重启 Bot</h3>
+            <p>确定要重启 Bot 吗？</p>
+            <ul>
+                <li>当前正在进行中的对话将被中断</li>
+                <li>重启预计需要 5-10 秒</li>
+                <li>WebUI 页面需要手动刷新</li>
+            </ul>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeRestartModal()">取消</button>
+                <button class="btn btn-danger" id="confirm-restart-btn" onclick="confirmRestart()">确认重启</button>
+            </div>
+            <div id="restart-status" style="margin-top:12px;display:none"></div>
+        </div>
+    </div>
+
+    <!-- Toast 通知 -->
+    <div id="toast-container"></div>
+
+    <script src="/webui/static/js/components.js"></script>
+    <script src="/webui/static/js/app.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

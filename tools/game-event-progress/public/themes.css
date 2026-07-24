@@ -1,0 +1,320 @@
+/* 每游戏独立视觉（参考 Game-Events-Calendar 分游戏页思路：色板 + 纹理 + 栏头气质） */
+
+.game-row {
+  --g-pattern: none;
+  --g-bar-bg: transparent;
+  --g-radius: 14px;
+  --g-mark: "";
+  position: relative;
+  border-radius: var(--g-radius);
+  isolation: isolate;
+}
+/* 角标极淡，避免花哨水印感 */
+.game-row::after {
+  content: var(--g-mark);
+  position: absolute;
+  right: 52px;
+  top: 16px;
+  z-index: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--g-accent) 18%, transparent);
+  pointer-events: none;
+  text-transform: uppercase;
+}
+.game-row .game-bar,
+.game-row .game-body {
+  position: relative;
+  z-index: 1;
+}
+.game-head {
+  background:
+    var(--g-pattern),
+    linear-gradient(90deg, var(--g-soft), transparent 55%),
+    var(--g-bar-bg);
+}
+.game-bar {
+  background: transparent;
+}
+
+/* ——— 明日方舟：工业黄黑、菱形切角 ——— */
+.game-row[data-game="arknights"] {
+  --g-accent: #f0c41a;
+  --g-soft: rgba(240, 196, 26, 0.14);
+  --g-ink: #1a1400;
+  --g-radius: 4px 14px 4px 14px;
+  --g-mark: "RHODES ISLAND";
+  --g-pattern: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 8px,
+    rgba(240, 196, 26, 0.04) 8px,
+    rgba(240, 196, 26, 0.04) 10px
+  );
+  --g-bar-bg: linear-gradient(180deg, #1a1610, #12151c);
+  border-color: rgba(240, 196, 26, 0.28);
+  box-shadow: 0 0 0 1px rgba(240, 196, 26, 0.08), 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+.game-row[data-game="arknights"] .game-bar::before {
+  width: 4px;
+  background: repeating-linear-gradient(180deg, #f0c41a 0 6px, #3a3010 6px 10px);
+}
+.game-row[data-game="arknights"] .game-icon {
+  border-radius: 4px;
+  clip-path: polygon(8% 0, 100% 0, 100% 92%, 92% 100%, 0 100%, 0 8%);
+}
+
+/* ——— 终末地：冷青工业 ——— */
+.game-row[data-game="endfield"] {
+  --g-accent: #9ad7c2;
+  --g-soft: rgba(154, 215, 194, 0.14);
+  --g-ink: #061510;
+  --g-mark: "ENDFIELD";
+  --g-pattern: radial-gradient(circle at 12% 50%, rgba(154, 215, 194, 0.12), transparent 42%);
+  --g-bar-bg: linear-gradient(90deg, #0d1a16, #12151c 70%);
+  border-color: rgba(154, 215, 194, 0.25);
+}
+
+/* ——— 蔚蓝档案：校园浅蓝、圆角 ——— */
+.game-row[data-game="bluearchive"] {
+  --g-accent: #7eb6ff;
+  --g-soft: rgba(126, 182, 255, 0.16);
+  --g-ink: #061322;
+  --g-radius: 20px;
+  --g-mark: "SCHALE";
+  --g-pattern: radial-gradient(ellipse at 80% 0%, rgba(255, 180, 210, 0.1), transparent 45%);
+  --g-bar-bg: linear-gradient(180deg, #152033, #12151c);
+  border-color: rgba(126, 182, 255, 0.3);
+}
+.game-row[data-game="bluearchive"] .game-icon {
+  border-radius: 50%;
+}
+
+/* ——— 原神：星辉青金 ——— */
+.game-row[data-game="genshin"] {
+  --g-accent: #6ec8ff;
+  --g-soft: rgba(110, 200, 255, 0.14);
+  --g-ink: #041018;
+  --g-mark: "TEYVAT";
+  --g-pattern:
+    radial-gradient(1.5px 1.5px at 20% 30%, rgba(255, 220, 140, 0.45), transparent 2px),
+    radial-gradient(1px 1px at 60% 60%, rgba(110, 200, 255, 0.4), transparent 2px),
+    radial-gradient(1.2px 1.2px at 85% 25%, rgba(255, 255, 255, 0.25), transparent 2px);
+  --g-bar-bg: linear-gradient(90deg, #0c1824, #12151c 65%);
+  border-color: rgba(110, 200, 255, 0.28);
+}
+
+/* ——— 星铁：列车暖琥珀 ——— */
+.game-row[data-game="starrail"] {
+  --g-accent: #d4a574;
+  --g-soft: rgba(212, 165, 116, 0.16);
+  --g-ink: #1a1008;
+  --g-mark: "ASTRAL EXPRESS";
+  --g-pattern: linear-gradient(105deg, transparent 40%, rgba(212, 165, 116, 0.06) 50%, transparent 60%);
+  --g-bar-bg: linear-gradient(180deg, #1c1410, #12151c);
+  border-color: rgba(212, 165, 116, 0.3);
+}
+
+/* ——— 绝区零：赛博霓虹 ——— */
+.game-row[data-game="zzz"] {
+  --g-accent: #e86a6a;
+  --g-soft: rgba(232, 106, 106, 0.12);
+  --g-ink: #1a0606;
+  --g-mark: "ZZZ";
+  --g-pattern: none;
+  --g-bar-bg: linear-gradient(90deg, #181012, #12151c 70%);
+  border-color: rgba(232, 106, 106, 0.28);
+}
+
+/* ——— 鸣潮：潮汐青绿 ——— */
+.game-row[data-game="wuwa"] {
+  --g-accent: #7dd3c0;
+  --g-soft: rgba(125, 211, 192, 0.14);
+  --g-ink: #061410;
+  --g-mark: "SOLARIS";
+  --g-pattern: radial-gradient(ellipse 120% 80% at 0% 100%, rgba(125, 211, 192, 0.12), transparent 50%);
+  --g-bar-bg: linear-gradient(180deg, #0e1a1a, #12151c);
+  border-color: rgba(125, 211, 192, 0.28);
+}
+
+/* ——— 碧蓝航线：海军蓝条纹 ——— */
+.game-row[data-game="azurlane"] {
+  --g-accent: #5b8def;
+  --g-soft: rgba(91, 141, 239, 0.14);
+  --g-ink: #060c18;
+  --g-mark: "AZUR LANE";
+  --g-pattern: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(91, 141, 239, 0.05) 3px,
+    rgba(91, 141, 239, 0.05) 4px
+  );
+  --g-bar-bg: linear-gradient(90deg, #0c1528, #12151c 70%);
+  border-color: rgba(91, 141, 239, 0.32);
+}
+
+/* ——— NIKKE ——— */
+.game-row[data-game="nikke"] {
+  --g-accent: #e85d4c;
+  --g-soft: rgba(232, 93, 76, 0.14);
+  --g-ink: #1a0806;
+  --g-mark: "GODDESS";
+  --g-bar-bg: linear-gradient(90deg, #1a0c0c, #12151c 70%);
+  border-color: rgba(232, 93, 76, 0.3);
+}
+
+/* ——— 1999 ——— */
+.game-row[data-game="reverse1999"] {
+  --g-accent: #b794f6;
+  --g-soft: rgba(183, 148, 246, 0.14);
+  --g-ink: #12081a;
+  --g-mark: "1999";
+  --g-pattern: radial-gradient(circle at 90% 20%, rgba(183, 148, 246, 0.12), transparent 40%);
+  --g-bar-bg: linear-gradient(180deg, #16101e, #12151c);
+  border-color: rgba(183, 148, 246, 0.3);
+}
+
+/* ——— 无期迷途 ——— */
+.game-row[data-game="ptn"] {
+  --g-accent: #9b7ed9;
+  --g-soft: rgba(155, 126, 217, 0.14);
+  --g-ink: #10081a;
+  --g-mark: "MBCC";
+  --g-bar-bg: linear-gradient(90deg, #14101c, #12151c 70%);
+  border-color: rgba(155, 126, 217, 0.28);
+}
+
+/* ——— 尘白禁区 ——— */
+.game-row[data-game="snowbreak"] {
+  --g-accent: #8ec8e8;
+  --g-soft: rgba(142, 200, 232, 0.14);
+  --g-ink: #061018;
+  --g-mark: "SNOWBREAK";
+  --g-pattern: linear-gradient(180deg, rgba(200, 230, 255, 0.06), transparent 40%);
+  --g-bar-bg: linear-gradient(180deg, #101820, #12151c);
+  border-color: rgba(142, 200, 232, 0.28);
+}
+
+/* ——— 少前2 ——— */
+.game-row[data-game="gfl2"] {
+  --g-accent: #a8b86c;
+  --g-soft: rgba(168, 184, 108, 0.14);
+  --g-ink: #121408;
+  --g-mark: "GFL2";
+  --g-bar-bg: linear-gradient(90deg, #141610, #12151c 70%);
+  border-color: rgba(168, 184, 108, 0.3);
+}
+
+/* ——— 炉石传说：羊皮纸暖橙 ——— */
+.game-row[data-game="hearthstone"] {
+  --g-accent: #e8a84a;
+  --g-soft: rgba(232, 168, 74, 0.16);
+  --g-ink: #1a1000;
+  --g-radius: 16px;
+  --g-mark: "HEARTHSTONE";
+  --g-pattern: radial-gradient(ellipse at 30% 0%, rgba(180, 90, 40, 0.15), transparent 50%);
+  --g-bar-bg: linear-gradient(180deg, #2a1a10, #1a1410 80%);
+  border-color: rgba(232, 168, 74, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 160, 0.08), 0 12px 28px rgba(0, 0, 0, 0.35);
+}
+.game-row[data-game="hearthstone"] .game-icon {
+  border-radius: 50%;
+  border-width: 2px;
+}
+
+/* ——— 植物大战僵尸2：草坪绿 ——— */
+.game-row[data-game="pvz2"] {
+  --g-accent: #6dbf4b;
+  --g-soft: rgba(109, 191, 75, 0.16);
+  --g-ink: #0a1406;
+  --g-mark: "PVZ2";
+  --g-pattern: repeating-linear-gradient(
+    90deg,
+    rgba(80, 140, 40, 0.08) 0 18px,
+    rgba(60, 110, 30, 0.05) 18px 36px
+  );
+  --g-bar-bg: linear-gradient(180deg, #142010, #12151c);
+  border-color: rgba(109, 191, 75, 0.35);
+}
+
+/* ——— 永劫无间：墨黑朱红 ——— */
+.game-row[data-game="naraka"] {
+  --g-accent: #c23b3b;
+  --g-soft: rgba(194, 59, 59, 0.14);
+  --g-ink: #1a0606;
+  --g-mark: "NARAKA";
+  --g-pattern: linear-gradient(135deg, rgba(194, 59, 59, 0.08), transparent 40%);
+  --g-bar-bg: linear-gradient(90deg, #140808, #0e0e12 70%);
+  border-color: rgba(194, 59, 59, 0.35);
+}
+.game-row[data-game="naraka"] .game-bar::before {
+  width: 3px;
+  background: linear-gradient(180deg, #c23b3b, #5a1010);
+}
+
+/* ——— 三角洲行动：战术橙绿 ——— */
+.game-row[data-game="delta"] {
+  --g-accent: #d4a017;
+  --g-soft: rgba(212, 160, 23, 0.14);
+  --g-ink: #141000;
+  --g-mark: "DELTA FORCE";
+  --g-pattern: repeating-linear-gradient(
+    -30deg,
+    transparent,
+    transparent 6px,
+    rgba(80, 100, 60, 0.08) 6px,
+    rgba(80, 100, 60, 0.08) 7px
+  );
+  --g-bar-bg: linear-gradient(90deg, #141810, #12151c 70%);
+  border-color: rgba(212, 160, 23, 0.32);
+}
+.game-row[data-game="delta"] .game-icon {
+  border-radius: 6px;
+}
+
+/* 仅自定义游戏；勿用 data-accent=custom 盖住内置游戏主题 */
+.game-row[data-accent="custom"][data-game^="custom"] {
+  --g-accent: #c4b59a;
+  --g-soft: rgba(196, 181, 154, 0.12);
+  --g-ink: #14110c;
+  --g-mark: "CUSTOM";
+  --g-bar-bg: linear-gradient(90deg, #18160f, #12151c 70%);
+}
+
+/* 栏内卡片跟随游戏强调色 */
+.game-row .remain.live {
+  border-color: color-mix(in srgb, var(--g-accent) 45%, transparent);
+}
+.game-row .fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--g-accent) 60%, #1a8f4e),
+    color-mix(in srgb, var(--g-accent) 35%, var(--live))
+  );
+}
+.game-row .card.is-soon .fill {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--g-accent) 35%, #c47a20),
+    var(--warn, #e8a23a)
+  );
+}
+.game-row .card {
+  border-color: color-mix(in srgb, var(--g-accent) 18%, rgba(255, 255, 255, 0.06));
+}
+.game-row .card.is-hot {
+  border-color: color-mix(in srgb, var(--g-accent) 40%, rgba(255, 255, 255, 0.1));
+}
+.game-row .badge-cat {
+  background: color-mix(in srgb, var(--g-accent) 25%, rgba(0, 0, 0, 0.55));
+}
+
+.card {
+  cursor: pointer;
+}
+.card:focus-visible {
+  outline: 2px solid var(--g-accent, var(--accent));
+  outline-offset: 2px;
+}

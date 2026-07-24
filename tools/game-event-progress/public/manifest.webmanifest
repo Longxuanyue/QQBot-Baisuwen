@@ -1,0 +1,18 @@
+{
+  "name": "活动进度",
+  "short_name": "活动进度",
+  "description": "多游戏作战、卡池、网页活动进度",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0a0d13",
+  "theme_color": "#0a0d13",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "./icons/custom.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

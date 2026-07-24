@@ -1,0 +1,110 @@
+{% extends "layout.html" %}
+{% block title %}备份恢复 - 白苏文 Bot{% endblock %}
+{% block content %}
+<h1>💾 备份与恢复</h1>
+
+<div class="backup-grid">
+    <!-- 备份 -->
+    <div class="backup-card">
+        <h3>📥 创建备份</h3>
+        <p class="text-muted">一键打包下载配置文件、人设、插件状态。</p>
+        <div style="margin:1rem 0;">
+            <label>
+                <input type="checkbox" id="include-memory" style="margin-right:0.5rem;">
+                包含记忆数据 (user_data/*.db) — 可能较大
+            </label>
+        </div>
+        <button class="btn btn-primary" onclick="downloadBackup()">📥 下载备份包</button>
+        <div id="backup-status" style="margin-top:0.5rem;"></div>
+    </div>
+
+    <!-- 恢复 -->
+    {% if can_restore %}
+    <div class="backup-card">
+        <h3>📤 恢复备份</h3>
+        <p class="text-muted">上传之前下载的备份 ZIP 文件。配置文件会被覆盖，记忆数据会合并。</p>
+        <div style="margin:1rem 0;">
+            <input type="file" id="restore-file" accept=".zip" style="width:100%;">
+        </div>
+        <button class="btn btn-warning" onclick="restoreBackup()">📤 恢复</button>
+        <div id="restore-status" style="margin-top:0.5rem;"></div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- 历史备份 -->
+{% if backups %}
+<h2 style="margin-top:2rem;">📂 历史备份 (.env 自动备份)</h2>
+<table class="info-table">
+    <thead><tr><th>文件名</th><th>大小</th><th>时间</th></tr></thead>
+    <tbody>
+    {% for b in backups %}
+    <tr>
+        <td><code>{{ b.name }}</code></td>
+        <td>{{ b.size }}</td>
+        <td>{{ b.time }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+async function downloadBackup() {
+    const includeMemory = document.getElementById('include-memory').checked;
+    const statusEl = document.getElementById('backup-status');
+    statusEl.innerHTML = '<span class="spinner"></span> 打包中...';
+
+    try {
+        const resp = await fetch(`/webui/api/backup/download?include_memory=${includeMemory}`);
+        if (!resp.ok) throw new Error('创建失败');
+
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = resp.headers.get('Content-Disposition')?.match(/filename=(.+)/)?.[1] || 'baisuwen_backup.zip';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        statusEl.innerHTML = '<span class="status-success">✅ 下载已开始</span>';
+    } catch(e) {
+        statusEl.innerHTML = `<span class="status-error">❌ ${e.message}</span>`;
+    }
+}
+
+{% if can_restore %}
+async function restoreBackup() {
+    const fileInput = document.getElementById('restore-file');
+    const file = fileInput.files[0];
+    if (!file) {
+        showToast('❌ 请选择备份文件', 'error');
+        return;
+    }
+
+    if (!confirm('恢复将覆盖当前配置！确定要继续吗？')) return;
+
+    const statusEl = document.getElementById('restore-status');
+    statusEl.innerHTML = '<span class="spinner"></span> 恢复中...';
+
+    try {
+        const resp = await fetch('/webui/api/backup/restore', {
+            method: 'POST',
+            body: file,
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            statusEl.innerHTML = `<div class="alert alert-success">✅ ${data.message}</div>
+                <div class="alert alert-warning">⚠️ 建议重启 Bot 使配置生效</div>`;
+        } else {
+            statusEl.innerHTML = `<div class="alert alert-error">❌ ${data.message}</div>`;
+        }
+    } catch(e) {
+        statusEl.innerHTML = `<span class="status-error">❌ ${e.message}</span>`;
+    }
+}
+{% endif %}
+</script>
+{% endblock %}

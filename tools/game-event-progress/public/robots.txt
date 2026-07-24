@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# 静态站点；若绑定自定义域名可再补 Sitemap

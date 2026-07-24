@@ -1,0 +1,103 @@
+{% extends "layout.html" %}
+{% block title %}插件管理 - 白苏文 Bot{% endblock %}
+{% block content %}
+<h1>🧩 插件管理</h1>
+
+<div class="toolbar">
+    <div class="filter-bar">
+        <input type="text" id="plugin-search" placeholder="搜索插件..." oninput="filterPlugins()">
+        <select id="category-filter" onchange="filterPlugins()">
+            <option value="">全部类别</option>
+            <option value="core">核心</option>
+            <option value="feature">功能</option>
+            <option value="admin">管理</option>
+            <option value="tool">工具</option>
+        </select>
+        <select id="source-filter" onchange="filterPlugins()">
+            <option value="">全部来源</option>
+            <option value="custom">自研插件</option>
+            <option value="store">官方商店</option>
+        </select>
+    </div>
+    <div class="stats-summary">
+        总计: <strong>{{ stats.total }}</strong> |
+        已启用: <strong style="color:var(--success)">{{ stats.enabled }}</strong> |
+        已禁用: <strong style="color:var(--danger)">{{ stats.disabled }}</strong>
+    </div>
+</div>
+
+<div class="plugin-list">
+{% for p in plugins %}
+    <div class="plugin-card" data-name="{{ p.name }}" data-category="{{ p.category }}" data-source="{{ p.source }}">
+        <div class="plugin-header">
+            <div class="plugin-name">
+                {{ p.name }}
+                <span class="source-badge {{ p.source }}">{{ '自研' if p.source == 'custom' else '商店' }}</span>
+            </div>
+            <div class="plugin-actions">
+                <span class="category-tag {{ p.category }}">{{ p.category }}</span>
+                <label class="toggle-switch" {% if not can_toggle %}title="无权限"{% endif %}>
+                    <input type="checkbox"
+                           {% if p.enabled %}checked{% endif %}
+                           {% if not can_toggle %}disabled{% endif %}
+                           onchange="togglePlugin('{{ p.name }}', this)">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span class="status-text {{ 'enabled' if p.enabled else 'disabled' }}">
+                    {{ '启用' if p.enabled else '禁用' }}
+                </span>
+            </div>
+        </div>
+        <div class="plugin-description">{{ p.description }}</div>
+        <div class="plugin-meta">
+            <span>v{{ p.version }}</span>
+            {% if p.author %}<span>{{ p.author }}</span>{% endif %}
+        </div>
+    </div>
+{% endfor %}
+</div>
+
+<div id="toggle-notice" style="display:none; margin-top:1rem; padding:1rem; background:var(--warning-bg); border-radius:8px;">
+    ⚠️ 插件开关状态已保存，但需要<button class="btn btn-sm btn-warning" onclick="triggerRestart()">重启 Bot</button>才能生效。
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function filterPlugins() {
+    const search = document.getElementById('plugin-search').value.toLowerCase();
+    const category = document.getElementById('category-filter').value;
+    const source = document.getElementById('source-filter').value;
+    document.querySelectorAll('.plugin-card').forEach(card => {
+        const name = card.dataset.name.toLowerCase();
+        const cat = card.dataset.category;
+        const src = card.dataset.source;
+        const matchSearch = !search || name.includes(search);
+        const matchCat = !category || cat === category;
+        const matchSource = !source || src === source;
+        card.style.display = (matchSearch && matchCat && matchSource) ? '' : 'none';
+    });
+}
+
+{% if can_toggle %}
+async function togglePlugin(name, checkbox) {
+    try {
+        const resp = await fetch(`/webui/api/plugins/${name}/toggle`, {method: 'POST'});
+        const data = await resp.json();
+        if (data.ok) {
+            checkbox.checked = data.enabled;
+            const statusText = checkbox.parentElement.nextElementSibling;
+            statusText.textContent = data.enabled ? '启用' : '禁用';
+            statusText.className = `status-text ${data.enabled ? 'enabled' : 'disabled'}`;
+            showToast(`✅ ${name} 已${data.enabled ? '启用' : '禁用'}（需重启生效）`, 'warning');
+            if (data.needs_restart) {
+                document.getElementById('toggle-notice').style.display = 'block';
+            }
+        }
+    } catch(e) {
+        showToast('❌ 操作失败', 'error');
+        checkbox.checked = !checkbox.checked; // revert
+    }
+}
+{% endif %}
+</script>
+{% endblock %}

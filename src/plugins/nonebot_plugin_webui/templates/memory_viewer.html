@@ -1,0 +1,208 @@
+{% extends "layout.html" %}
+{% block title %}记忆浏览 - 白苏文 Bot{% endblock %}
+{% block content %}
+<h1>🧠 记忆浏览</h1>
+
+{% if not has_provider %}
+<div class="alert alert-warning">⚠️ 记忆插件未加载或未注册 MemoryProvider，无法浏览记忆。</div>
+{% else %}
+<div class="memory-layout">
+    <!-- 用户列表 -->
+    <div class="memory-users-panel">
+        <h3>用户列表</h3>
+        <input type="text" id="user-search" placeholder="搜索用户QQ..." oninput="filterUsers()">
+        <div class="user-list" id="user-list">
+            {% for uid in users %}
+            <div class="user-item" data-uid="{{ uid }}" onclick="selectUser('{{ uid }}')">
+                <span>👤 {{ uid }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% if not users %}
+        <p class="text-muted">暂无记忆数据</p>
+        {% endif %}
+    </div>
+
+    <!-- 记忆详情 -->
+    <div class="memory-detail-panel">
+        <div id="memory-placeholder" class="memory-placeholder">
+            👈 请从左侧选择一个用户
+        </div>
+        <div id="memory-content" style="display:none">
+            <div class="memory-toolbar">
+                <h3 id="memory-title">记忆详情</h3>
+                <div style="display:flex;gap:0.5rem;align-items:center;">
+                    <input type="text" id="memory-search" placeholder="搜索记忆..." style="width:200px;">
+                    <button class="btn btn-sm btn-primary" onclick="loadMemories()">🔍 搜索</button>
+                    <button class="btn btn-sm btn-secondary" onclick="loadMemories()">🔄 刷新</button>
+                    {% if can_clear %}
+                    <button class="btn btn-sm btn-danger" onclick="clearMemories()">🗑️ 清空全部</button>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="memory-stats" id="memory-stats"></div>
+            <div class="memory-entries" id="memory-entries"></div>
+            <div class="pagination" id="memory-pagination"></div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- 删除确认弹窗 -->
+<div id="delete-modal" class="modal" style="display:none">
+    <div class="modal-overlay" onclick="closeDeleteModal()"></div>
+    <div class="modal-content">
+        <h3>⚠️ 确认删除</h3>
+        <p id="delete-message"></p>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeDeleteModal()">取消</button>
+            <button class="btn btn-danger" id="delete-confirm-btn">确认删除</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let currentUser = null;
+let currentPage = 1;
+
+function filterUsers() {
+    const search = document.getElementById('user-search').value.toLowerCase();
+    document.querySelectorAll('.user-item').forEach(item => {
+        item.style.display = item.dataset.uid.includes(search) ? '' : 'none';
+    });
+}
+
+async function selectUser(uid) {
+    currentUser = uid;
+    currentPage = 1;
+    document.querySelectorAll('.user-item').forEach(i => i.classList.remove('active'));
+    document.querySelector(`.user-item[data-uid="${uid}"]`)?.classList.add('active');
+    document.getElementById('memory-placeholder').style.display = 'none';
+    document.getElementById('memory-content').style.display = 'block';
+    document.getElementById('memory-title').textContent = `用户 ${uid} 的记忆`;
+    await loadMemories();
+}
+
+async function loadMemories(page = 1) {
+    if (page) currentPage = page;
+    const search = document.getElementById('memory-search')?.value || '';
+
+    const params = new URLSearchParams({page: currentPage, page_size: 50});
+    if (search) params.set('search', search);
+
+    try {
+        const resp = await fetch(`/webui/api/memory/${currentUser}?${params}`);
+        const data = await resp.json();
+
+        // 统计
+        const statsEl = document.getElementById('memory-stats');
+        statsEl.innerHTML = `<span>共 <strong>${data.total}</strong> 条记忆</span>`;
+
+        // 条目
+        const entriesEl = document.getElementById('memory-entries');
+        if (!data.entries.length) {
+            entriesEl.innerHTML = '<p class="text-muted">无匹配记忆</p>';
+        } else {
+            entriesEl.innerHTML = data.entries.map(e => `
+                <div class="memory-entry ${e.source}">
+                    <div class="memory-entry-content">${escapeHtml(e.content)}</div>
+                    <div class="memory-entry-meta">
+                        <span class="source-badge ${e.source}">${e.source === 'short' ? '短期' : '长期'}</span>
+                        <span>重要性: ${e.importance.toFixed(2)}</span>
+                        <span>强度: ${e.strength.toFixed(2)}</span>
+                        <span>访问: ${e.access_count}次</span>
+                        {% if can_delete %}
+                        <button class="btn btn-sm btn-danger" onclick="deleteMemory('${e.id}')" style="margin-left:auto;">🗑️</button>
+                        {% endif %}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 分页
+        const totalPages = Math.ceil(data.total / data.page_size);
+        const pagEl = document.getElementById('memory-pagination');
+        if (totalPages > 1) {
+            let html = '';
+            for (let p = 1; p <= Math.min(totalPages, 20); p++) {
+                html += `<button class="btn btn-sm ${p === currentPage ? 'btn-primary' : 'btn-secondary'}"
+                         onclick="loadMemories(${p})">${p}</button>`;
+            }
+            if (totalPages > 20) html += `<span>... 共${totalPages}页</span>`;
+            pagEl.innerHTML = html;
+        } else {
+            pagEl.innerHTML = '';
+        }
+    } catch(e) {
+        showToast('❌ 加载失败: ' + e.message, 'error');
+    }
+}
+
+let deleteTarget = null;
+function deleteMemory(id) {
+    deleteTarget = {type: 'single', id};
+    document.getElementById('delete-message').textContent = '确定要删除这条记忆吗？此操作不可撤销。';
+    document.getElementById('delete-modal').style.display = 'flex';
+    document.getElementById('delete-confirm-btn').onclick = confirmDelete;
+}
+
+function clearMemories() {
+    deleteTarget = {type: 'clear'};
+    document.getElementById('delete-message').innerHTML =
+        `确定要清空用户 <strong>${currentUser}</strong> 的全部记忆吗？<br>请输入 QQ 号确认：<br>
+         <input type="text" id="clear-confirm-input" placeholder="${currentUser}" style="margin-top:8px;width:100%;">`;
+    document.getElementById('delete-modal').style.display = 'flex';
+    document.getElementById('delete-confirm-btn').onclick = confirmClear;
+}
+
+async function confirmDelete() {
+    if (!deleteTarget || deleteTarget.type !== 'single') return;
+    try {
+        const resp = await fetch(`/webui/api/memory/${currentUser}/${deleteTarget.id}`, {method: 'DELETE'});
+        const data = await resp.json();
+        if (data.ok) {
+            showToast('✅ 已删除', 'success');
+            closeDeleteModal();
+            loadMemories();
+        } else {
+            showToast('⚠️ 删除失败：记忆可能已不存在', 'warning');
+        }
+    } catch(e) {
+        showToast('❌ 删除失败', 'error');
+    }
+}
+
+async function confirmClear() {
+    const confirmInput = document.getElementById('clear-confirm-input')?.value || '';
+    if (confirmInput !== currentUser) {
+        showToast('❌ QQ 号不匹配', 'error');
+        return;
+    }
+    try {
+        const resp = await fetch(`/webui/api/memory/${currentUser}`, {method: 'DELETE'});
+        const data = await resp.json();
+        if (data.ok) {
+            showToast(`✅ 已清空 ${data.deleted || ''} 条记忆`, 'success');
+            closeDeleteModal();
+            loadMemories();
+        } else {
+            showToast('⚠️ 清空失败', 'warning');
+        }
+    } catch(e) {
+        showToast('❌ 操作失败', 'error');
+    }
+}
+
+function closeDeleteModal() {
+    document.getElementById('delete-modal').style.display = 'none';
+    deleteTarget = null;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

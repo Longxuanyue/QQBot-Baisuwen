@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0810;
+    color: #f3f0e8;
+    font-family: "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    padding: 16px 20px;
+    width: {{ width }}px;
+  }
+  .alert-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; margin-bottom: 14px;
+    background: linear-gradient(90deg, rgba(255,60,40,0.15), transparent);
+    border-left: 3px solid #ff5030;
+    border-radius: 0 8px 8px 0;
+  }
+  .alert-header .icon { font-size: 24px; }
+  .alert-header h1 { font-size: 18px; font-weight: 900; color: #ff6040; }
+  .alert-header .sub { font-size: 11px; color: #a08070; margin-left: auto; }
+  .item {
+    display: flex; gap: 10px; padding: 10px 12px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    background: rgba(255,60,20,0.06);
+    border: 1px solid rgba(255,80,40,0.15);
+    align-items: center;
+  }
+  .game-tag {
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+    padding: 3px 8px; border-radius: 4px;
+    min-width: 50px; text-align: center;
+  }
+  .info { flex: 1; min-width: 0; }
+  .info .title {
+    font-size: 13px; font-weight: 600; line-height: 1.3;
+    margin-bottom: 4px;
+  }
+  .countdown {
+    font-size: 18px; font-weight: 900;
+    text-align: right; white-space: nowrap;
+  }
+  .countdown .num { color: #ff5030; }
+  .countdown .unit { font-size: 11px; color: #a08070; }
+  .footer {
+    margin-top: 12px; padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    text-align: center; font-size: 10px; color: #6a6068;
+  }
+  .empty { text-align: center; padding: 30px; color: #6a6068; }
+</style>
+</head>
+<body>
+<div class="alert-header">
+  <span class="icon">⚠️</span>
+  <h1>即将截止提醒</h1>
+  <span class="sub">{{ updated }}</span>
+</div>
+
+{% if events|length == 0 %}
+<div class="empty">✅ 暂无即将截止的活动或卡池</div>
+{% endif %}
+
+{% for ev in events %}
+<div class="item">
+  <span class="game-tag" style="background:{{ ev._game_color }}22; color:{{ ev._game_color }};">
+    {{ ev._game_emoji }} {{ ev._game_name }}
+  </span>
+  <div class="info">
+    <div class="title">{{ ev.title }}</div>
+    <div style="font-size:10px;color:#8a8376;">
+      {{ ev.get('category','') }} · 截止 {{ ev.end[:16] if ev.end else '?' }}
+    </div>
+  </div>
+  <div class="countdown">
+    <span class="num">{{ ev._urgent_hours_left|int }}</span><span class="unit"> 小时</span>
+  </div>
+</div>
+{% endfor %}
+
+<div class="footer">
+  ⚠ 以上活动即将在 {{ hours }} 小时内截止，请及时完成
+</div>
+</body>
+</html>

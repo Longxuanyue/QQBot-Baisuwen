@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% block title %}人设管理 - 白苏文 Bot{% endblock %}
+{% block content %}
+<h1>🎭 人设管理</h1>
+
+{% if not can_edit %}
+<div class="alert alert-warning">⚠️ 你只有只读权限，无法修改人设。</div>
+{% endif %}
+
+<div class="config-toolbar">
+    <div class="config-info">
+        <span>编辑 <code>personality_traits.json</code></span>
+        <span class="text-muted">修改后自动热重载，无需重启 Bot</span>
+    </div>
+    <div>
+        {% if can_edit %}
+        <button class="btn btn-primary" onclick="savePersonality()">💾 保存人设</button>
+        <button class="btn btn-secondary" onclick="location.reload()">🔄 重新加载</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="editor-container">
+    <textarea id="personality-editor"
+              class="code-editor"
+              spellcheck="false"
+              {% if not can_edit %}readonly{% endif %}
+              placeholder='{"人物信息": {...}}'>{{ personality_content }}</textarea>
+</div>
+
+<div id="save-result" style="margin-top:1rem;display:none;"></div>
+
+<div class="config-help">
+    <h3>📖 人设结构说明</h3>
+    <table class="info-table">
+        <tr><td><code>人物信息.姓名</code></td><td>角色名称</td></tr>
+        <tr><td><code>人物信息.别称</code></td><td>角色昵称</td></tr>
+        <tr><td><code>人物信息.年龄</code></td><td>角色年龄</td></tr>
+        <tr><td><code>人物信息.种族</code></td><td>角色种族</td></tr>
+        <tr><td><code>人物信息.性格特征</code></td><td>性格描述 (dict)</td></tr>
+        <tr><td><code>人物信息.永不遗忘记忆</code></td><td>始终注入 prompt 的记忆 (list)</td></tr>
+        <tr><td><code>人物信息.speaking_style</code></td><td>说话风格描述</td></tr>
+        <tr><td><code>人物信息.typical_phrases</code></td><td>口头禅列表</td></tr>
+    </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+{% if can_edit %}
+async function savePersonality() {
+    const content = document.getElementById('personality-editor').value;
+    // 客户端预校验 JSON
+    try { JSON.parse(content); } catch(e) {
+        document.getElementById('save-result').style.display = 'block';
+        document.getElementById('save-result').innerHTML =
+            `<div class="alert alert-error">❌ JSON 格式错误: ${e.message}</div>`;
+        return;
+    }
+
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    try {
+        const resp = await fetch('/webui/api/personality', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content})
+        });
+        const data = await resp.json();
+        const resultEl = document.getElementById('save-result');
+        resultEl.style.display = 'block';
+        if (data.ok) {
+            resultEl.innerHTML = `<div class="alert alert-success">✅ ${data.message}</div>`;
+        } else {
+            resultEl.innerHTML = `<div class="alert alert-error">❌ ${data.error}</div>`;
+        }
+    } catch(e) {
+        showToast('❌ 请求失败: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 保存人设';
+    }
+}
+{% endif %}
+</script>
+{% endblock %}

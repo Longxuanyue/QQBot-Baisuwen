@@ -1,0 +1,54 @@
+{% extends "layout.html" %}
+{% block title %}仪表盘 - 白苏文 Bot{% endblock %}
+{% block content %}
+<h1>📊 仪表盘</h1>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-label">Bot 状态</div>
+        <div class="stat-value">
+            <span class="status-dot {{ 'online' if sys_info.bot_online else 'offline' }}"></span>
+            {{ '🟢 在线' if sys_info.bot_online else '🔴 离线' }}
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">运行时间</div>
+        <div class="stat-value">{{ sys_info.uptime_days }}天 {{ sys_info.uptime_hours }}小时</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">CPU</div>
+        <div class="stat-value">{{ sys_info.cpu }}%</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">内存</div>
+        <div class="stat-value">{{ sys_info.mem_mb }} MB</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">已加载插件</div>
+        <div class="stat-value">{{ plugin_stats.enabled }} / {{ plugin_stats.total }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">记忆用户数</div>
+        <div class="stat-value">{{ user_count }}</div>
+    </div>
+</div>
+
+<h2 style="margin-top: 2rem;">系统信息</h2>
+<table class="info-table">
+    <tr><td>Python 版本</td><td>{{ sys_info.python_version }}</td></tr>
+    <tr><td>NoneBot 版本</td><td>{{ sys_info.nonebot_version }}</td></tr>
+    <tr><td>操作系统</td><td>{{ sys_info.platform }}</td></tr>
+    <tr><td>进程 PID</td><td>{{ sys_info.pid }}</td></tr>
+    <tr><td>最后重启</td><td>{{ sys_info.last_startup }}</td></tr>
+</table>
+
+<h2 style="margin-top: 2rem;">插件分类统计</h2>
+<div class="stats-grid">
+    {% for cat, count in plugin_stats.by_category.items() %}
+    <div class="stat-card">
+        <div class="stat-label">{{ cat }}</div>
+        <div class="stat-value">{{ count }}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+=== SUMMARY ===
+azurlane       n=  4 pend=False cats={'combat': 2, 'event': 2} emptyBan=0 bare=0 dups=0 http=0
+bluearchive    n= 13 pend=None  cats={'combat': 5, 'event': 2, 'gacha': 6} emptyBan=0 bare=0 dups=0 http=0
+delta          n=  1 pend=False cats={'combat': 1} emptyBan=0 bare=0 dups=0 http=0
+endfield       n=  7 pend=None  cats={'gacha': 1, 'combat': 1, 'event': 5} emptyBan=0 bare=0 dups=0 http=0
+events         n=  6 pend=None  cats={'gacha': 4, 'combat': 2} emptyBan=1 bare=0 dups=0 http=0
+genshin        n= 20 pend=None  cats={'combat': 15, 'gacha': 3, 'event': 1, 'web': 1} emptyBan=1 bare=0 dups=0 http=0
+gfl2           n=  5 pend=False cats={'event': 3, 'combat': 1, 'web': 1} emptyBan=0 bare=0 dups=0 http=0
+hearthstone    n=  7 pend=False cats={'combat': 2, 'event': 5} emptyBan=0 bare=0 dups=0 http=0
+naraka         n=  2 pend=False cats={'combat': 2} emptyBan=0 bare=0 dups=0 http=0
+nikke          n=  4 pend=False cats={'combat': 2, 'event': 2} emptyBan=0 bare=0 dups=0 http=0
+ptn            n=  1 pend=False cats={'combat': 1} emptyBan=0 bare=0 dups=0 http=0
+pvz2           n=  0 pend=False cats={} emptyBan=0 bare=0 dups=0 http=0
+reverse1999    n=  2 pend=False cats={'combat': 1, 'gacha': 1} emptyBan=0 bare=0 dups=0 http=0
+snowbreak      n=  1 pend=False cats={'combat': 1} emptyBan=0 bare=0 dups=0 http=0
+starrail       n= 16 pend=None  cats={'combat': 8, 'gacha': 8} emptyBan=0 bare=0 dups=0 http=0
+wuwa           n=  9 pend=False cats={'combat': 2, 'gacha': 4, 'event': 2, 'web': 1} emptyBan=5 bare=0 dups=0 http=0
+zzz            n=  8 pend=None  cats={'combat': 7, 'gacha': 1} emptyBan=0 bare=0 dups=0 http=0
+=== ISSUES (hard) ===
+pvz2 | EMPTY_NOT_PENDING | 
+=== ISSUES (soft) ===
+delta | SCHEDULE_DRIFT | ['全新「裂变赛季」，现已上线！ Δstart=72h']
+hard=1 soft=1

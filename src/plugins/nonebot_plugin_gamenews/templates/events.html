@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0d13;
+    color: #f3f0e8;
+    font-family: "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    padding: 16px 20px;
+    width: {{ width }}px;
+  }
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 12px; margin-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .header h1 { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
+  .header .tag { font-size: 12px; color: #8a8376; }
+  .header .updated {
+    font-size: 11px; color: #8a8376;
+    background: rgba(255,255,255,0.04); padding: 4px 10px; border-radius: 6px;
+  }
+  .game-section {
+    margin-bottom: 18px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .game-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    font-size: 15px; font-weight: 700;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .game-head .emoji { font-size: 20px; }
+  .game-head .count { margin-left: auto; font-size: 11px; color: #8a8376; font-weight: 500; }
+  .game-head .bar-left {
+    width: 3px; height: 18px; border-radius: 2px; margin-right: 2px;
+  }
+  .event-card {
+    display: flex; gap: 12px; padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    align-items: center;
+  }
+  .event-card:last-child { border-bottom: none; }
+  .event-card.urgent {
+    background: linear-gradient(90deg, rgba(255,80,60,0.08), transparent 60%);
+  }
+  .cover {
+    width: 80px; height: 50px; border-radius: 6px; flex-shrink: 0;
+    background: rgba(255,255,255,0.04);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .cover img { width: 100%; height: 100%; object-fit: cover; }
+  .cover .no-img { font-size: 22px; opacity: 0.4; }
+  .info { flex: 1; min-width: 0; }
+  .info .title {
+    font-size: 13px; font-weight: 600; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; margin-bottom: 4px;
+  }
+  .badge-row { display: flex; gap: 5px; margin-bottom: 5px; flex-wrap: wrap; }
+  .badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 3px;
+    font-weight: 600; letter-spacing: 0.3px;
+  }
+  .badge-combat { background: rgba(255,107,107,0.2); color: #ff6b6b; }
+  .badge-gacha { background: rgba(180,130,255,0.2); color: #c89bff; }
+  .badge-event { background: rgba(100,160,255,0.2); color: #6ea8ff; }
+  .badge-web { background: rgba(62,207,122,0.2); color: #3ecf7a; }
+  .badge-live { background: rgba(62,207,122,0.15); color: #3ecf7a; }
+  .badge-preview { background: rgba(106,168,255,0.15); color: #6aa8ff; }
+  .badge-urgent {
+    background: rgba(255,80,60,0.25); color: #ff5030;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .time-row {
+    display: flex; align-items: center; gap: 10px; font-size: 11px; color: #8a8376;
+    margin-bottom: 3px;
+  }
+  .remain {
+    font-weight: 700; font-size: 12px;
+    color: #f0c41a;
+  }
+  .remain.soon { color: #ff5030; }
+  .progress-wrap { display: flex; align-items: center; gap: 6px; }
+  .track {
+    flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.08);
+    overflow: hidden;
+  }
+  .track .fill {
+    height: 100%; border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+  .pct { font-size: 10px; color: #8a8376; width: 32px; text-align: right; }
+  .footer {
+    margin-top: 14px; padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    text-align: center; font-size: 10px; color: #8a8376;
+  }
+  .empty-msg {
+    text-align: center; padding: 40px; color: #8a8376; font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>{{ title }}</h1>
+    <div class="tag">{{ subtitle }}</div>
+  </div>
+  <div class="updated">更新于 {{ updated }}</div>
+</div>
+
+{% if grouped|length == 0 %}
+<div class="empty-msg">📋 暂无进行中的活动或卡池</div>
+{% endif %}
+
+{% for game_key, game in grouped.items() %}
+<div class="game-section">
+  <div class="game-head">
+    <span class="bar-left" style="background:{{ game.color }};"></span>
+    <span class="emoji">{{ game.emoji }}</span>
+    <span>{{ game.name }}</span>
+    <span class="count">{{ game.events|length }} 项</span>
+  </div>
+  {% for ev in game.events %}
+  {% set is_urgent = ev._urgent or false %}
+  <div class="event-card {{ 'urgent' if is_urgent else '' }}">
+    <div class="cover">
+      {% if ev._cover_abs %}
+      <img src="file://{{ ev._cover_abs }}" alt="" />
+      {% else %}
+      <span class="no-img">{{ game.emoji }}</span>
+      {% endif %}
+    </div>
+    <div class="info">
+      <div class="title">{{ ev.title }}</div>
+      <div class="badge-row">
+        {% set cat = ev.get('category', 'event') %}
+        <span class="badge badge-{{ cat }}">{{ cat_labels.get(cat, cat) }}</span>
+        {% if ev.status == '进行中' %}
+        <span class="badge badge-live">进行中</span>
+        {% elif ev.status == '即将开始' %}
+        <span class="badge badge-preview">预告</span>
+        {% endif %}
+        {% if is_urgent %}
+        <span class="badge badge-urgent">⚠ 将截止</span>
+        {% endif %}
+      </div>
+      <div class="time-row">
+        <span class="remain {{ 'soon' if is_urgent else '' }}">{{ ev.remain }}</span>
+        {% if ev.days %}
+        <span>{{ ev.days.elapsedDays }} / {{ ev.days.totalDays }} 天</span>
+        {% endif %}
+      </div>
+      <div class="progress-wrap">
+        <div class="track">
+          <div class="fill" style="width:{{ ev.progress }}%; background:{{ game.color }};"></div>
+        </div>
+        <span class="pct">{{ ev.progress }}%</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<div class="footer">
+  数据来自各游戏官方公告 · 以游戏内为准 · {{ updated }}
+</div>
+</body>
+</html>

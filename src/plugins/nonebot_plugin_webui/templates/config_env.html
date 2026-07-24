@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+{% block title %}配置管理 - 白苏文 Bot{% endblock %}
+{% block content %}
+<h1>⚙️ 配置管理 (.env)</h1>
+
+{% if not can_edit %}
+<div class="alert alert-warning">⚠️ 你只有只读权限，无法修改配置。</div>
+{% endif %}
+
+<div class="config-toolbar">
+    <div class="config-info">
+        <span>编辑项目根目录的 <code>.env</code> 文件</span>
+        <span class="text-muted">格式: KEY=VALUE，支持 # 注释</span>
+    </div>
+    <div>
+        {% if can_edit %}
+        <button class="btn btn-primary" onclick="saveConfig()">💾 保存配置</button>
+        <button class="btn btn-secondary" onclick="location.reload()">🔄 重新加载</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="editor-container">
+    <textarea id="env-editor"
+              class="code-editor"
+              spellcheck="false"
+              {% if not can_edit %}readonly{% endif %}
+              placeholder="KEY=VALUE&#10;# 这是注释">{{ env_content }}</textarea>
+</div>
+
+<div id="save-result" style="margin-top:1rem;display:none;"></div>
+
+<div class="config-help">
+    <h3>📖 配置项说明</h3>
+    <table class="info-table">
+        <tr><td><code>DEEPSEEK_API_KEY</code></td><td>DeepSeek API 密钥</td></tr>
+        <tr><td><code>DEEPSEEK_API_BASE</code></td><td>DeepSeek API 地址</td></tr>
+        <tr><td><code>DEEPSEEK_MODEL</code></td><td>使用的模型名称</td></tr>
+        <tr><td><code>ENABLE_ASR</code></td><td>是否启用语音识别 (true/false)</td></tr>
+        <tr><td><code>ENABLE_TTS</code></td><td>是否启用语音合成 (true/false)</td></tr>
+        <tr><td><code>ENABLE_MULTIMODAL</code></td><td>是否启用多模态 (true/false)</td></tr>
+        <tr><td><code>LOG_LEVEL</code></td><td>日志级别 (DEBUG/INFO/WARNING/ERROR)</td></tr>
+        <tr><td><code>BOT_NICKNAME</code></td><td>机器人昵称</td></tr>
+        <tr><td><code>SUPERUSERS</code></td><td>超级用户 QQ 号列表 (JSON 数组)</td></tr>
+    </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+{% if can_edit %}
+async function saveConfig() {
+    const content = document.getElementById('env-editor').value;
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+
+    try {
+        const resp = await fetch('/webui/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content})
+        });
+        const data = await resp.json();
+        const resultEl = document.getElementById('save-result');
+        resultEl.style.display = 'block';
+
+        if (data.ok) {
+            resultEl.innerHTML = `<div class="alert alert-success">✅ ${data.message}</div>`;
+            if (data.needs_restart) {
+                resultEl.innerHTML += `<div class="alert alert-warning" style="margin-top:0.5rem">
+                    ⚠️ <button class="btn btn-sm btn-warning" onclick="triggerRestart()">重启 Bot</button> 使配置生效</div>`;
+            }
+        } else {
+            let details = data.details ? data.details.join('<br>') : '';
+            resultEl.innerHTML = `<div class="alert alert-error">❌ ${data.error}<br>${details}</div>`;
+        }
+    } catch(e) {
+        showToast('❌ 请求失败: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '💾 保存配置';
+    }
+}
+{% endif %}
+</script>
+{% endblock %}

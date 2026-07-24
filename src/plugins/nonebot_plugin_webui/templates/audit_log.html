@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+{% block title %}审计日志 - 白苏文 Bot{% endblock %}
+{% block content %}
+<h1>📋 审计日志</h1>
+
+<div class="audit-filters">
+    <select id="action-filter" onchange="loadAuditLogs()">
+        <option value="">全部操作</option>
+        <option value="login">登录</option>
+        <option value="config.save">配置修改</option>
+        <option value="personality.save">人设修改</option>
+        <option value="plugin.toggle">插件开关</option>
+        <option value="memory.delete">记忆删除</option>
+        <option value="memory.clear">记忆清空</option>
+        <option value="backup.download">备份下载</option>
+        <option value="backup.restore">备份恢复</option>
+        <option value="bot.restart">重启</option>
+        <option value="bot.startup">启动</option>
+    </select>
+    <input type="text" id="user-filter" placeholder="按操作者筛选..." onchange="loadAuditLogs()">
+    <button class="btn btn-sm btn-secondary" onclick="loadAuditLogs()">🔄 刷新</button>
+</div>
+
+<table class="audit-table">
+    <thead>
+        <tr>
+            <th>时间</th>
+            <th>操作者</th>
+            <th>操作</th>
+            <th>目标</th>
+            <th>详情</th>
+            <th>IP</th>
+        </tr>
+    </thead>
+    <tbody id="audit-tbody">
+        <tr><td colspan="6" class="text-muted">加载中...</td></tr>
+    </tbody>
+</table>
+
+<div class="pagination" id="audit-pagination"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+let auditPage = 0;
+const PAGE_SIZE = 50;
+
+async function loadAuditLogs(offset = 0) {
+    auditPage = offset;
+    const action = document.getElementById('action-filter').value;
+    const user = document.getElementById('user-filter').value;
+
+    const params = new URLSearchParams({limit: PAGE_SIZE, offset});
+    if (action) params.set('action', action);
+    if (user) params.set('user', user);
+
+    try {
+        const resp = await fetch(`/webui/api/audit?${params}`);
+        const data = await resp.json();
+
+        const tbody = document.getElementById('audit-tbody');
+        if (!data.entries.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-muted">无记录</td></tr>';
+        } else {
+            tbody.innerHTML = data.entries.map(e => `
+                <tr>
+                    <td>${e.ts}</td>
+                    <td>${e.user}</td>
+                    <td><span class="action-tag ${e.action.replace('.', '-')}">${e.action}</span></td>
+                    <td>${e.target || '-'}</td>
+                    <td>${e.detail || '-'}</td>
+                    <td>${e.ip || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 分页
+        const pagEl = document.getElementById('audit-pagination');
+        let html = '';
+        if (offset > 0) {
+            html += `<button class="btn btn-sm btn-secondary" onclick="loadAuditLogs(${Math.max(0, offset - PAGE_SIZE)})">← 上一页</button>`;
+        }
+        if (data.entries.length === PAGE_SIZE) {
+            html += `<button class="btn btn-sm btn-secondary" onclick="loadAuditLogs(${offset + PAGE_SIZE})">下一页 →</button>`;
+        }
+        html += `<span class="text-muted" style="margin-left:0.5rem">共 ${data.total} 条</span>`;
+        pagEl.innerHTML = html;
+    } catch(e) {
+        showToast('❌ 加载失败: ' + e.message, 'error');
+    }
+}
+
+loadAuditLogs();
+</script>
+{% endblock %}

@@ -1,0 +1,162 @@
+{% extends "layout.html" %}
+{% block title %}登录 - 白苏文 Bot{% endblock %}
+{% block head %}
+<style>
+.login-container {
+    display: flex; justify-content: center; align-items: center;
+    min-height: 80vh; padding: 2rem;
+}
+.login-card {
+    background: var(--surface); border-radius: 16px; padding: 2.5rem;
+    max-width: 480px; width: 100%; text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+.login-card h2 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+.login-card .subtitle { color: var(--text-muted); margin-bottom: 2rem; font-size: 0.9rem; }
+.token-display {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.5rem; margin: 1.5rem 0;
+}
+.token-value {
+    font-family: 'SF Mono', monospace; font-size: 1.2rem;
+    color: var(--primary); word-break: break-all;
+    background: var(--code-bg); padding: 0.75rem; border-radius: 8px;
+    margin: 0.75rem 0; user-select: all;
+}
+.step { margin: 1.5rem 0; }
+.step-number {
+    display: inline-flex; width: 28px; height: 28px;
+    background: var(--primary); color: #fff; border-radius: 50%;
+    align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 600; margin-right: 0.5rem;
+}
+.status-indicator { margin-top: 1rem; }
+.status-waiting { color: var(--text-muted); }
+.status-success { color: var(--success); }
+.status-error { color: var(--danger); }
+.spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 2px solid var(--border); border-top-color: var(--primary);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: middle; margin-right: 0.5rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.qr-hint {
+    margin-top: 1rem; padding: 0.75rem; background: var(--warning-bg);
+    border-radius: 8px; font-size: 0.85rem; color: var(--warning-text);
+}
+</style>
+{% endblock %}
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <h2>🔐 登录管理后台</h2>
+        <p class="subtitle">使用 QQ 验证身份，安全快捷</p>
+
+        <div class="step">
+            <span class="step-number">1</span> 复制下方 Token
+        </div>
+        <div class="token-display">
+            <div class="token-value" id="token-value">{{ token }}</div>
+            <button class="btn btn-primary btn-sm" onclick="copyToken()">📋 复制 Token</button>
+        </div>
+
+        <div class="step">
+            <span class="step-number">2</span> 向 Bot 私聊发送
+        </div>
+        <div style="background:var(--code-bg);padding:0.5rem 1rem;border-radius:8px;font-family:monospace;font-size:1.1rem;">
+            /auth {{ token }}
+        </div>
+
+        <div class="step">
+            <span class="step-number">3</span> 等待自动登录
+        </div>
+        <div class="status-indicator">
+            <div id="status-waiting">
+                <span class="spinner"></span> 等待验证...
+            </div>
+            <div id="status-success" style="display:none" class="status-success">
+                ✅ 验证成功！正在跳转...
+            </div>
+            <div id="status-error" style="display:none" class="status-error">
+                ❌ Token 已过期，请刷新页面
+            </div>
+        </div>
+
+        <div class="qr-hint">
+            💡 Token 有效期 5 分钟，一次性使用。<br>
+            请确保已添加 Bot 为 QQ 好友。
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const TOKEN = "{{ token }}";
+let pollCount = 0;
+const MAX_POLLS = 150; // 5 minutes at 2s interval
+
+// Try WebSocket first, fall back to polling
+let ws = null;
+try {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${protocol}//${location.host}/webui/ws`);
+
+    ws.onopen = () => {
+        ws.send(JSON.stringify({type: "watch_token", token: TOKEN}));
+    };
+
+    ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'token_verified') {
+            document.cookie = `webui_session=${msg.session};path=/;max-age=86400;SameSite=Strict`;
+            onSuccess();
+        } else if (msg.type === 'token_expired') {
+            onExpired();
+        }
+    };
+
+    ws.onerror = () => { ws = null; startPolling(); };
+} catch(e) { ws = null; startPolling(); }
+
+function startPolling() {
+    const poll = setInterval(async () => {
+        if (pollCount++ > MAX_POLLS) {
+            clearInterval(poll);
+            onExpired();
+            return;
+        }
+        try {
+            const resp = await fetch('/webui/api/auth/status', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({token: TOKEN})
+            });
+            const data = await resp.json();
+            if (data.ok) {
+                clearInterval(poll);
+                document.cookie = `webui_session=${data.session};path=/;max-age=86400;SameSite=Strict`;
+                onSuccess();
+            }
+        } catch(e) { /* retry */ }
+    }, 2000);
+}
+
+function onSuccess() {
+    document.getElementById('status-waiting').style.display = 'none';
+    document.getElementById('status-success').style.display = 'block';
+    setTimeout(() => { location.href = '/webui/dashboard'; }, 800);
+}
+
+function onExpired() {
+    document.getElementById('status-waiting').style.display = 'none';
+    document.getElementById('status-error').style.display = 'block';
+}
+
+function copyToken() {
+    navigator.clipboard.writeText(TOKEN).then(() => {
+        showToast('✅ Token 已复制到剪贴板', 'success');
+    });
+}
+</script>
+{% endblock %}
