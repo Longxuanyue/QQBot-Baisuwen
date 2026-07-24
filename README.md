@@ -45,7 +45,12 @@ baisuwen/
    - [LuckyLilliaDesktop](https://github.com/LLOneBot/LuckyLilliaDesktop.Avalonia) — 桌面端管理工具
    - 也可使用其他 OneBot 实现（如 [Lagrange](https://github.com/LagrangeDev/Lagrange.Core)、[NapCat](https://github.com/NapNeko/NapCatQQ)）
 
-2. **NoneBot 插件** — 本项目依赖以下外部插件，请从 NoneBot 插件商店安装：
+2. **模型文件** — VITS 语音合成依赖预训练模型，需从 GitHub Releases 下载：
+   - 前往 [Releases 页面](https://github.com/Longxuanyue/QQBot-Baisuwen/releases) 下载最新版 `models.zip`（或单独的 `G_latest.pth` + `finetune_speaker.json`）
+   - 将文件放入项目根目录下的 `models/` 文件夹
+   - 在 `.env` 中配置 `TTS_MODEL_PATH` 和 `TTS_CONFIG_PATH`
+
+3. **NoneBot 插件** — 本项目依赖以下外部插件，请从 NoneBot 插件商店安装：
    - [nonebot-plugin-skland](https://github.com/FrostN0v0/nonebot-plugin-skland) — 明日方舟森空岛插件-通过森空岛查询游戏数据
 
 ### 环境要求
@@ -104,6 +109,8 @@ nb run --reload
 2. 使用 VITS-fast-fine-tuning 进行微调训练
 3. 将训练好的模型文件（`.pth`）和配置文件（`.json`）放入 `models/` 目录
 4. 在 `.env` 中配置 `TTS_MODEL_PATH` 和 `TTS_CONFIG_PATH`
+
+> 💡 **不想自行训练？** 可直接使用项目预训练模型。前往 [Releases](https://github.com/Longxuanyue/QQBot-Baisuwen/releases) 下载模型文件，放入 `models/` 目录即可。
 
 ## 📝 更新日志
 
