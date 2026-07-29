@@ -16,6 +16,10 @@ def init_database(db_path: str):
 
     conn = sqlite3.connect(db_path)
 
+    # 启用 WAL 模式以支持并发读写，设置 busy_timeout 避免锁冲突
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
+
     # 基础记忆表
     conn.execute('''
         CREATE TABLE IF NOT EXISTS memories (

@@ -4,7 +4,7 @@ nonebot_plugin_tts - 文本转语音插件
 支持 VITS（默认）和 GPT-SoVITS 双引擎，多角色音色切换。
 """
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 from nonebot.plugin import PluginMetadata
 

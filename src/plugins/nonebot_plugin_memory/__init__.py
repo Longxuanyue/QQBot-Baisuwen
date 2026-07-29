@@ -8,7 +8,7 @@ Memory Module for Local AI Assistant (多用户支持版 v2)
 - DB 内计数器（替代文件计数器）
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.2"
 
 from nonebot.plugin import PluginMetadata
 

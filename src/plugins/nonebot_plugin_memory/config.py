@@ -1,6 +1,15 @@
 import os
 from pathlib import Path
 
+# ── 显式加载 .env，避免因插件导入顺序导致配置为空 ──
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(Path(__file__).resolve().parent.parent.parent.parent, ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path, override=False)
+except ImportError:
+    pass
+
 # 基础目录（用于单用户模式默认路径）
 BASE_DIR = Path(__file__).parent.parent
 

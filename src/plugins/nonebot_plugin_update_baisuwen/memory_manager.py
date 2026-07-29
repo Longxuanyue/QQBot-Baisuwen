@@ -28,12 +28,25 @@ class MemoryManager:
 
     @classmethod
     async def run_maintenance_for_all(cls):
-        """对所有用户执行夜间维护（清理、升级、合并、睡眠巩固）"""
+        """对所有用户执行夜间维护（清理、升级、合并、睡眠巩固）。
+        单个用户失败不影响其他用户的维护。"""
+        from nonebot import logger
+        success_count = 0
+        fail_count = 0
         for user_id in cls.get_all_user_ids():
-            mgr = cls.get_manager(user_id)
-            mgr.cleanup()
-            mgr.merge_similar()
-            mgr.upgrade_and_deduplicate()
-            mgr.sleep_consolidation()
+            try:
+                mgr = cls.get_manager(user_id)
+                mgr.cleanup()
+                mgr.merge_similar()
+                mgr.upgrade_and_deduplicate()
+                mgr.sleep_consolidation()
+                success_count += 1
+            except Exception as e:
+                fail_count += 1
+                logger.error(f"用户 {user_id} 记忆维护失败: {e}")
             import asyncio
             await asyncio.sleep(0.05)
+        if fail_count > 0:
+            logger.warning(
+                f"夜间记忆维护完成: {success_count} 成功, {fail_count} 失败"
+            )

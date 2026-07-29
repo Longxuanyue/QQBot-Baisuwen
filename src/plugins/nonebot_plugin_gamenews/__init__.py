@@ -5,7 +5,7 @@ nonebot_plugin_gamenews —— 多游戏活动进度 + 图片渲染插件
 渲染引擎：nonebot_plugin_htmlrender (Playwright)
 """
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 import asyncio
 import subprocess
@@ -429,9 +429,11 @@ try:
         async def scheduled_urgency_check(h: int = _urgency_hour) -> None:
             """紧迫事件检查（每小时整点）。"""
             from .urgency import check_and_push_urgent
-            count = await check_and_push_urgent()
-            if count > 0:
-                logger.info(f"[GameNews] {h}:00 紧迫提醒: {count} 条已推送")
+            pushed = await check_and_push_urgent()
+            if pushed > 0:
+                logger.info(f"[GameNews] {h}:00 紧迫提醒: 已向 {pushed} 个目标推送")
+            else:
+                logger.debug(f"[GameNews] {h}:00 紧迫提醒: 无推送")
 
 except ImportError:
     logger.warning("[GameNews] apscheduler 未安装，定时任务不可用")

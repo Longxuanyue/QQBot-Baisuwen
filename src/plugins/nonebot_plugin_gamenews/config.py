@@ -2,10 +2,23 @@
 插件配置 —— 通过 .env 或环境变量注入。
 """
 
+import os
 from pathlib import Path
-from typing import Optional
 
 from pydantic_settings import BaseSettings
+
+# 项目根目录（baisuwen/）
+_PLUGIN_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _PLUGIN_DIR.parent.parent.parent
+
+# 显式加载 .env 到 os.environ，避免因插件导入顺序导致配置为空
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(_PROJECT_ROOT, ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path, override=False)
+except ImportError:
+    pass
 
 
 class PluginConfig(BaseSettings):
@@ -25,7 +38,7 @@ class PluginConfig(BaseSettings):
     push_minute: int = 30
 
     # ── 紧迫提醒 ──
-    urgency_hours: int = 48                      # 多少小时内算紧迫
+    urgency_hours: int = 48                       # 多少小时内算紧迫
     urgency_cron_hours: list[int] = [10, 20]     # 紧迫提醒时间点（每小时整点触发）
 
     # ── 数据库（订阅） ──
@@ -43,7 +56,7 @@ class PluginConfig(BaseSettings):
     render_width: int = 780
     device_scale_factor: float = 2.0
 
-    # ── HTTP（保留用于内部调用） ──
+    # ── HTTP ──
     request_delay: float = 1.0
     request_timeout: int = 30
 
@@ -54,10 +67,12 @@ class PluginConfig(BaseSettings):
 
 plugin_config = PluginConfig()
 
-# 设置默认路径：相对于本插件目录查找 tools/game-event-progress
-_PLUGIN_DIR = Path(__file__).resolve().parent
-_PROJECT_ROOT = _PLUGIN_DIR.parent.parent.parent  # baisuwen/
+# ── 兼容旧 .env 键名 ──
+_crawl_val = os.getenv("GAMENEWS_CRAWL_HOURS", "")
+if _crawl_val and plugin_config.urgency_hours == 48:
+    plugin_config.urgency_hours = int(_crawl_val)
 
+# 设置默认路径：相对于本插件目录查找 tools/game-event-progress
 if not plugin_config.game_event_data_dir:
     plugin_config.game_event_data_dir = str(
         _PROJECT_ROOT / "tools" / "game-event-progress" / "data"

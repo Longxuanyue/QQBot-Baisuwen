@@ -12,7 +12,7 @@ from .renderer import render_urgent_image
 
 
 async def check_and_push_urgent() -> int:
-    """检查紧迫事件并推送。返回推送的条数。"""
+    """检查紧迫事件并推送。返回实际推送的事件条数（0 表示未推送）。"""
     if not plugin_config.enabled:
         return 0
 
@@ -47,29 +47,31 @@ async def check_and_push_urgent() -> int:
             targets.append(dict(sub))
 
     if not targets:
-        logger.info("[GameNews·紧迫] 无推送目标")
-        return len(urgent)
+        logger.info("[GameNews·紧迫] 无推送目标，跳过推送")
+        return 0
 
     # 推送
     try:
         bot = get_bot()
     except ValueError:
         logger.warning("[GameNews·紧迫] 无可用 Bot，跳过推送")
-        return len(urgent)
+        return 0
 
     import asyncio
     from nonebot.adapters.onebot.v11 import MessageSegment
 
     msg = MessageSegment.text("⚠ 即将截止提醒！以下活动/卡池将在48小时内结束：\n") + MessageSegment.image(image_bytes)
 
+    pushed_count = 0
     for t in targets:
         try:
             if t["target_type"] == "group":
                 await bot.send_group_msg(group_id=int(t["target_id"]), message=msg)
             else:
                 await bot.send_private_msg(user_id=int(t["target_id"]), message=msg)
+            pushed_count += 1
             await asyncio.sleep(0.5)
         except Exception as exc:
             logger.error(f"[GameNews·紧迫] 推送失败 {t}: {exc}")
 
-    return len(urgent)
+    return pushed_count

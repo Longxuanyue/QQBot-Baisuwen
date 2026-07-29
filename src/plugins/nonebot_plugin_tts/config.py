@@ -1,4 +1,14 @@
 import os
+from pathlib import Path
+
+# ── 显式加载 .env，避免因插件导入顺序导致配置为空 ──
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(Path(__file__).resolve().parent.parent.parent.parent, ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path, override=False)
+except ImportError:
+    pass
 
 # 模型与配置文件路径（支持环境变量）
 DEFAULT_MODEL_PATH = os.getenv("TTS_MODEL_PATH", "models/G_latest.pth")
