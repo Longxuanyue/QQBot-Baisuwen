@@ -2,11 +2,13 @@
 插件注册中心：发现、元数据管理、开关控制
 """
 
+import ast
 import importlib
 import importlib.util
 import json
 import os
 import pkgutil
+import sys
 from typing import Optional
 
 from nonebot import logger
@@ -189,36 +191,37 @@ class PluginRegistry:
         )
 
     def _extract_meta(self, name: str, path: str) -> PluginMeta:
-        """从插件包中提取元数据"""
+        """从插件包中提取元数据。
+
+        优先从 sys.modules 中查找已被 NoneBot 加载的模块来读取
+        __plugin_meta__（避免二次导入导致的相对导入失败）。
+        """
         desc = ""
         version = "0.1.0"
         author = ""
         category = "feature"
+        init_file = os.path.join(path, "__init__.py")
 
         try:
-            # 尝试导入并读取 __plugin_meta__
-            spec = importlib.util.spec_from_file_location(
-                f"{name}._meta", os.path.join(path, "__init__.py")
-            )
-            if spec and spec.loader:
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-
+            mod = self._find_loaded_module(init_file)
+            if mod is None:
+                # 回退：AST 解析版本号（不执行代码，无副作用）
+                version = self._parse_version_ast(init_file) or version
+            else:
+                if hasattr(mod, "__version__"):
+                    version = str(mod.__version__)
                 if hasattr(mod, "__plugin_meta__"):
                     meta = mod.__plugin_meta__
-                    # 兼容 dict 和 PluginMetadata 对象
                     if isinstance(meta, dict):
                         desc = meta.get("description", desc)
                         version = meta.get("version", version)
                         author = meta.get("author", author)
                         category = meta.get("category", category)
                     else:
-                        # PluginMetadata 对象
                         desc = meta.description or desc
                         version = meta.extra.get("version", version) if meta.extra else version
                         author = meta.extra.get("author", author) if meta.extra else author
                         category = meta.extra.get("category", category) if meta.extra else category
-
                 # 回退：使用模块 docstring
                 if not desc and hasattr(mod, "__doc__") and mod.__doc__:
                     desc = mod.__doc__.strip().split("\n")[0]
@@ -246,6 +249,36 @@ class PluginRegistry:
             enabled=True,
             path=path,
         )
+
+    @staticmethod
+    def _find_loaded_module(init_file: str) -> Optional[object]:
+        """在 sys.modules 中查找 __file__ 匹配 init_file 的已加载模块。"""
+        norm_target = os.path.normcase(os.path.abspath(init_file))
+        for mod in sys.modules.values():
+            try:
+                mod_file = getattr(mod, "__file__", None)
+                if mod_file and os.path.normcase(os.path.abspath(mod_file)) == norm_target:
+                    return mod
+            except Exception:
+                continue
+        return None
+
+    @staticmethod
+    def _parse_version_ast(init_file: str) -> Optional[str]:
+        """用 AST 静态解析 __version__ 赋值，不执行任何代码。"""
+        try:
+            with open(init_file, "r", encoding="utf-8") as f:
+                source = f.read()
+            tree = ast.parse(source)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id == "__version__":
+                            if isinstance(node.value, ast.Constant):
+                                return str(node.value.value)
+            return None
+        except Exception:
+            return None
 
     # ── 开关管理 ──
 

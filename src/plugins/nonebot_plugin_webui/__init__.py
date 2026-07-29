@@ -7,7 +7,7 @@ nonebot_plugin_webui — Web 管理后台插件
 挂载在 NoneBot 的 FastAPI 应用上，复用现有端口。
 """
 
-__version__ = "1.0.1"
+__version__ = "1.0.2"
 
 import os
 import sys
