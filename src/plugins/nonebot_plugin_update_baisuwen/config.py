@@ -108,25 +108,57 @@ class TTSConfig(BaseModel):
     @model_validator(mode='after')
     def _fallback_to_os_environ(self):
         """嵌套 BaseModel 的 env 查找可能不生效，直接从 os.environ 后备"""
-        # engine
-        if self.engine == "vits":
-            env_engine = os.getenv("TTS_ENGINE", "")
-            if env_engine:
-                self.engine = env_engine
-        # version
-        if self.gpt_sovits_version == "v2":
-            env_ver = os.getenv("GPT_SOVITS_VERSION", "")
-            if env_ver:
-                self.gpt_sovits_version = env_ver
-        # trained weights
-        if not self.gpt_sovits_gpt_weights:
-            env_gpt = os.getenv("GPT_SOVITS_GPT_WEIGHTS", "")
-            if env_gpt:
-                self.gpt_sovits_gpt_weights = env_gpt
-        if not self.gpt_sovits_sovits_weights:
-            env_sovits = os.getenv("GPT_SOVITS_SOVITS_WEIGHTS", "")
-            if env_sovits:
-                self.gpt_sovits_sovits_weights = env_sovits
+
+        def _str(key: str):
+            return os.getenv(key, "")
+
+        def _float(key: str, default: float) -> float:
+            v = os.getenv(key, "")
+            return float(v) if v else default
+
+        def _int(key: str, default: int) -> int:
+            v = os.getenv(key, "")
+            return int(v) if v else default
+
+        def _bool(key: str, default: bool) -> bool:
+            v = os.getenv(key, "")
+            return v.lower() == "true" if v else default
+
+        # ── 引擎 ──
+        v = _str("TTS_ENGINE")
+        if v:
+            self.engine = v
+
+        # ── VITS 字段 ──
+        self.enabled = _bool("ENABLE_TTS", self.enabled)
+        v = _str("TTS_MODEL_PATH")
+        if v: self.model_path = v
+        v = _str("TTS_CONFIG_PATH")
+        if v: self.config_path = v
+        self.always = _bool("TTS_ALWAYS", self.always)
+        self.speed = _float("TTS_SPEED", self.speed)
+        self.noise_scale = _float("TTS_NOISE_SCALE", self.noise_scale)
+        self.noise_scale_w = _float("TTS_NOISE_SCALE_W", self.noise_scale_w)
+        self.max_sentence_len = _int("TTS_MAX_SENTENCE_LEN", self.max_sentence_len)
+        self.silence_ms = _int("TTS_SILENCE_MS", self.silence_ms)
+        v = _str("TTS_DEVICE")
+        if v: self.device = v
+
+        # ── GPT-SoVITS 字段 ──
+        v = _str("GPT_SOVITS_CONFIG")
+        if v: self.gpt_sovits_config = v
+        v = _str("GPT_SOVITS_VERSION")
+        if v: self.gpt_sovits_version = v
+        v = _str("GPT_SOVITS_DEFAULT_CHARACTER")
+        if v: self.gpt_sovits_default_character = v
+        v = _str("GPT_SOVITS_DEVICE")
+        if v: self.gpt_sovits_device = v
+        self.gpt_sovits_is_half = _bool("GPT_SOVITS_IS_HALF", self.gpt_sovits_is_half)
+        v = _str("GPT_SOVITS_GPT_WEIGHTS")
+        if v: self.gpt_sovits_gpt_weights = v
+        v = _str("GPT_SOVITS_SOVITS_WEIGHTS")
+        if v: self.gpt_sovits_sovits_weights = v
+
         return self
     gpt_sovits_version: str = Field("v2", env="GPT_SOVITS_VERSION")
     gpt_sovits_default_character: str = Field("陈千语", env="GPT_SOVITS_DEFAULT_CHARACTER")
