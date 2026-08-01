@@ -1,6 +1,39 @@
-# 白苏文 (BaiSuWen) — QQ 智能陪伴机器人
+<!-- markdownlint-disable -->
 
-基于 [NoneBot2](https://github.com/nonebot/nonebot2) + [DeepSeek](https://platform.deepseek.com/) 的 AI 陪伴 QQ 机器人，具备多轮对话、记忆系统、语音交互和多模态理解能力。
+<div align="center">
+
+<img alt="LOGO" src="./docs/images/baisuwen_logo.jpg" width="256" height="256" />
+
+# 白苏文 (BaiSuWen)
+
+<br>
+<div>
+    <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-%233776AB?logo=python&logoColor=white">
+    <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blueviolet">
+    <img alt="framework" src="https://img.shields.io/badge/NoneBot2-powered-%233399ff?logo=nonebot">
+</div>
+<div>
+    <img alt="license" src="https://img.shields.io/github/license/Longxuanyue/QQBot-Baisuwen">
+    <img alt="commit" src="https://img.shields.io/github/commit-activity/m/Longxuanyue/QQBot-Baisuwen?color=%23ff69b4">
+    <img alt="LLM" src="https://img.shields.io/badge/LLM-DeepSeek-%234D6BFE">
+</div>
+<div>
+    <img alt="stars" src="https://img.shields.io/github/stars/Longxuanyue/QQBot-Baisuwen?style=social">
+    <img alt="GitHub all releases" src="https://img.shields.io/github/downloads/Longxuanyue/QQBot-Baisuwen/total?style=social">
+</div>
+<br>
+
+<!-- markdownlint-restore -->
+
+白苏文（BaiSuWen）是一款基于 NoneBot2 与 DeepSeek 的 QQ 智能陪伴机器人
+
+拥有独立角色人格，支持多轮对话、记忆系统、语音交互与多模态理解
+
+部署即用，一键接入你的 QQ，即刻开始与专属 AI 伙伴聊天！
+
+持续更新中......
+
+</div>
 
 ## ✨ 功能特性
 
@@ -32,6 +65,7 @@ baisuwen/
 │   ├── nonebot_plugin_admin/            # QQ 端管理命令
 │   └── nonebot_plugin_strongholdtools/  # 明日方舟-卫戍协议工具箱
 ├── tools/                               # CLI 工具（记忆管理）
+├── docs/                                # 项目文档与图片
 ├── pyproject.toml                       # 项目配置与依赖
 └── .env.example                         # 配置模板
 ```
@@ -115,18 +149,6 @@ nb run --reload
 4. 在 `.env` 中配置 `TTS_MODEL_PATH` 和 `TTS_CONFIG_PATH`
 
 > 💡 **不想自行训练？** 可直接使用项目预训练模型。前往 [Releases](https://github.com/Longxuanyue/QQBot-Baisuwen/releases) 下载模型文件，放入 `models/` 目录即可。
-
-## 📝 更新日志
-
-### V1.1.0（2026-07）
-
-1. **新增 GPT-SoVITS 模型支持** — TTS 模块现已兼容 GPT-SoVITS 与 VITS 双模型，用户可按需选择
-2. **修复部分无法正确读取 `.env` 配置的问题** — 优化配置解析逻辑，确保环境变量稳定加载
-3. **新增游戏动态推送功能** — 集成 game-event-progress，支持多款游戏的活动 / 卡池信息推送
-
-### V1.0.0
-
-- 初始代码库版本
 
 ## 📄 License
 

@@ -159,6 +159,7 @@ user_data/
 
 # 运行时生成的数据
 data/
+game_data/
 image_cache/
 voice_cache/
 
