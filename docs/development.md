@@ -164,23 +164,7 @@ CLI 工具（`tools/memory_cli.py`）可离线管理：`list` / `search` / `back
 
 使用 `nonebot-plugin-apscheduler`（项目已在 pyproject 依赖中）。示例见 `nonebot_plugin_memory/scheduler.py`（夜间维护）与 `nonebot_plugin_gamenews/__init__.py`（三组任务）。
 
-## 六、已知限制（重要）
-
-以下问题来自代码审计，开发时请注意：
-
-1. **`DIALOG_MAX_TURNS` / `DIALOG_SESSION_TTL` 是死配置** — `dialog/manager.py` 读取的是 `dialog/config.py` 的硬编码常量（20 / 1800），`.env` 中的同名键不生效。
-2. **`BOT_NICKNAME` 未被消费** — @/昵称检测依赖 NoneBot 的 `NICKNAME` 环境变量（`event.to_me`），`BOT_NICKNAME` 字段定义了但从未读取。
-3. **`ENABLE_VECTOR_SEARCH` 未接入主链路** — 向量检索（`embedding.py`）是独立 API，`retrieve_memories` 主入口仍走 FTS5/BM25。
-4. **ServiceRegistry 未接线** — `registry.py` 的拓扑初始化已实现但无模块调用，`/admin status` 的服务图标恒为空。
-5. **情感分析 `both` 模式缺陷** — `analyze()` 在规则置信度不足时直接返回 neutral，从不调用 `analyze_llm`，LLM 情感路径实际不可达。
-6. **画像缓存永不刷新** — `profiler.get_profile_summary` 只在首次构建，`PROFILE_UPDATE_INTERVAL` 是死代码。
-7. **GPT-SoVITS 路径硬编码** — `gpt_sovits_engine.py` 固定 `D:/GPT-SoVITS-main`，换机器需改代码（`GPT_SOVITS_CONFIG` 只覆盖配置文件）。
-8. **`OWNER_QQ` 硬编码** — `personality.py` 中主人判定使用常量 `"2461292801"`，而非 `SUPERUSERS`。
-9. **`/admin sleep off` 恢复值硬编码** 23:30，与代码默认值 22:00、`.env.example` 的 23:30 三处不一致。
-
-修复上述问题时，请保持现有行为兼容（配置项以 `.env` 为准、缺失时降级），并更新 [configuration.md](configuration.md) 中的对应条目。
-
-## 七、发布流程
+## 六、发布流程
 
 1. 修改代码，`ruff check` + `pyright` 通过
 2. 若引入新配置：更新 `.env.example` 与 `docs/configuration.md`

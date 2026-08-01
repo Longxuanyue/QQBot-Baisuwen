@@ -163,6 +163,9 @@ game_data/
 image_cache/
 voice_cache/
 
+# 本地安全评估报告（仅本地查看，不入库）
+安全评估报告.md
+
 # 模型文件（通过 GitHub Releases 分发，clone 后需自行下载）
 models/*
 !models/.gitkeep
