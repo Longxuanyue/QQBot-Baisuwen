@@ -50,28 +50,7 @@ baisuwen/
 
 ## 三、消息处理流程
 
-```
-QQ 消息 → OneBot V11 协议端 → NoneBot → 核心插件 message_handler（priority 10）
-  │
-  ├─ 1. 前置过滤：以命令前缀开头的消息跳过（避免与指令插件冲突）
-  ├─ 2. 休眠检查：BOT_SLEEP_START ~ BOT_SLEEP_END 期间静默
-  ├─ 3. 群聊控制：@/昵称触发 或 GROUP_REPLY_PROBABILITY 随机命中；群冷却检查
-  ├─ 4. 内容提取：
-  │     ├─ 语音段 → 下载 → 转 wav → Whisper 转文字
-  │     ├─ 图片段 → 安全下载 → base64 → LLM Vision 描述
-  │     └─ 文本段 → 原文
-  ├─ 5. 上下文组装：
-  │     ├─ 检索记忆（FTS5 + jieba 分词，top_k 条）
-  │     ├─ 读取会话历史（最近 DIALOG_MAX_TURNS 轮）
-  │     ├─ 用户画像摘要（姓名/所在地/职业/喜好/关注话题）
-  │     └─ 情感上下文（最近消息情感 → 语气提示）
-  ├─ 6. 构建 system prompt：人设 JSON + 核心记忆 + 以上上下文
-  ├─ 7. 调用 LLM 生成回复
-  ├─ 8. 后台任务：LLM 提取新记忆 → 去重 → 入库（asyncio.create_task，不阻塞回复）
-  └─ 9. 回复：
-        ├─ 文字回复（默认）
-        └─ 语音回复（/voicemode 为 always 或语音进语音出时，TTS 合成后发送）
-```
+![消息处理主流程](images/Message.gif)
 
 关键实现位置：
 
@@ -86,6 +65,8 @@ QQ 消息 → OneBot V11 协议端 → NoneBot → 核心插件 message_handler�
 | 记忆提取 | `generate_and_store_memory_llm` | 同上 |
 
 ## 四、记忆系统
+
+![记忆系统数据流](images/Memory.gif)
 
 ### 4.1 存储模型
 
@@ -107,12 +88,7 @@ W(t) = strength × (Δhours + 1)^(-β)      # β = MEMORY_BETA，默认 0.5
 
 ### 4.3 记忆生命周期
 
-```
-新记忆（importance 默认 0.6）
-  → 短期库（最多 2000 条）
-  → 升级条件（任一满足）：importance ≥ 0.7 | access_count ≥ 5 | 权重 ≥ 0.5
-  → 长期库（最多 5000 条）
-```
+![记忆生命周期](images/Memory_life.gif)
 
 去重：短库按 jieba 首词哈希分桶 + `difflib` 相似度 ≥ 0.9 合并；长库用 SequenceMatcher ≥ 0.85 判重。冲突记忆（如「喜欢 X」→「现在不喜欢 X」）默认**降权旧记忆**而非删除。
 
@@ -126,18 +102,15 @@ W(t) = strength × (Δhours + 1)^(-β)      # β = MEMORY_BETA，默认 0.5
 
 ## 五、语音链路
 
-```
-用户语音 ──> 下载 → silk_to_wav（pilk/ffmpeg）──> Whisper 转文字 ──> 进入对话流程
-                                                                    │
-Bot 回复 ──────────────────────────────────────────────────────────┤
-         └─> TTS 引擎 ─> 长文本按标点断句 + 300ms 静音拼接 ─> 生成 wav ─> 发送语音
-```
+![语音链路数据流](images/Voice.gif)
 
 - **TTS 双引擎**：`TTS_ENGINE=vits`（内置，单音色 <1s）或 `gpt_sovits`（外部项目 GPT-SoVITS，通过 sys.path 注入 + chdir 兼容方式调用）
 - **情感角色路由**（GPT-SoVITS）：Level 1 情感匹配（回复情感 → 角色）→ Level 2 关键词匹配（24 角色特征词）→ Level 3 默认角色
 - **语音开关**：`/voicemode` 命令设置 auto / always / text 三模式，群聊默认始终文字
 
 ## 六、WebUI
+
+![WebUI 认证与运维时序](images/webui.gif)
 
 - 挂载于 NoneBot 同一 FastAPI 应用（`/webui` 前缀，端口同 `PORT`）
 - **认证**：QQ 内 `/auth <token>` 双通道登录（token 5 分钟有效），session 为 HMAC 签名 cookie（24h）
@@ -149,6 +122,8 @@ Bot 回复 ───────────────────────
 
 ## 七、定时任务汇总
 
+![定时任务调度](images/APScheduler.gif)
+
 | 任务 | 时间 | 说明 |
 |------|------|------|
 | 记忆维护 | 每天 02:00 | 清理/合并/升级/巩固 |
@@ -159,22 +134,7 @@ Bot 回复 ───────────────────────
 
 ## 八、外部依赖与数据流
 
-```
-┌────────────┐   HTTP(HTTPS)   ┌─────────────┐
-│ DeepSeek   │◄───────────────►│ 核心插件     │
-│ API        │   对话/图片/提取 │             │
-└────────────┘                 └──────┬──────┘
-                                      │
-   ┌──────────────┐    subprocess    ┌▼───────────┐    SQLite    ┌────────────────┐
-   │ game-event-  │◄────────────────►│ gamenews   │◄────────────►│ game_data/     │
-   │ progress     │    update.py     │ 插件        │   订阅/事件   │ game_news.db   │
-   └──────────────┘                  └────────────┘               └────────────────┘
-                                      │
-   ┌──────────────┐   sys.path+chdir ┌▼───────────┐
-   │ GPT-SoVITS   │◄────────────────►│ TTS 引擎   │
-   │ 外部项目      │   推理调用        │ (gpt_sovits)│
-   └──────────────┘                  └────────────┘
-```
+![主框架](images/baisuwen.gif)
 
 ## 九、设计要点
 

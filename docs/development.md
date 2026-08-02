@@ -137,11 +137,7 @@ WebUI 插件页与 help 插件都会读取 `__plugin_meta__`。
 
 消息处理 `event_handler.py::handle_message` 的执行序：
 
-```
-休眠检查 → 命令前缀跳过 → 语音转文字 → 图片理解 → 空文本短路
-→ 群聊概率/冷却 → 写入会话 → 检索记忆 → 拼 system prompt → LLM
-→ 后台记忆提取 → 回复（文字/语音）
-```
+![一轮对话的完整时序](images/Conversation_timing.gif)
 
 要挂接新的「内容感知」能力（如视频理解、链接解析），在 `handle_message` 提取段追加即可；要注入新的上下文，在 `_build_system_prompt_with_context` 追加（每项独立 try/except）。
 
