@@ -1,0 +1,2 @@
+# 确保 Windows 批处理脚本始终以 CRLF 检出（cmd 解析 LF 版批处理时 goto/label 行为不稳定）
+deploy/deploy.bat text eol=crlf

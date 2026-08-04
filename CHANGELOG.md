@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-08-04
+
+### Changed
+
+- 优化 Windows 端一键部署脚本 — 显式安装 nonebot2 框架本体、API Key 允许留空、修复批处理脚本行尾导致的解析不稳定问题
+- 新增人设模板文件 `personality_traits.template.json`，便于自定义角色人设
+- `.env.example` 中 GPT-SoVITS 配置示例改为占位符，避免误用示例路径
+
+### Fixed
+
+- 修复部分配置文件
+
 ## [1.2.0] - 2026-08-01
 
 ### Fixed
@@ -36,7 +48,8 @@
   - 群聊支持、WebUI 管理面板、定时休眠
   - 明日方舟-卫戍协议工具箱
 
-[Unreleased]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/releases/tag/v1.0.0

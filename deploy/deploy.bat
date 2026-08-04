@@ -1,49 +1,148 @@
 @echo off
-chcp 65001 >nul 2>&1
-title ç™½è‹æ–‡ (BaiSuWen) ä¸€é”®éƒ¨ç½²
+setlocal
+title °×ËÕÎÄ (BaiSuWen) Ò»¼ü²¿Êğ
 
-REM =============================================
-REM   ç™½è‹æ–‡ ä¸€é”®éƒ¨ç½²å™¨ (Windows)
-REM   ç”¨æ³•ï¼šåŒå‡»æ­¤æ–‡ä»¶
-REM   è¯´æ˜ï¼šè‡ªåŠ¨ä½¿ç”¨ç³»ç»Ÿ Python è¿è¡Œ deploy.py
-REM =============================================
+REM =====================================================
+REM   °×ËÕÎÄ Ò»¼ü²¿ÊğÆ÷ (Windows)
+REM   ÓÃ·¨£ºË«»÷´ËÎÄ¼ş
+REM   ¹¦ÄÜ£º×Ô¶¯¼ì²â/°²×° Python 3.10+£¬È»ºóÔËĞĞ deploy\deploy.py
+REM   ËµÃ÷£ºPython ¹Ì¶¨ÏÂÔØ 3.12.10£¨3.12.11 ÆğÎª½öÔ´ÂëµÄ
+REM         °²È«Î¬»¤°æ£¬²»ÔÙÌá¹© Windows °²×°°ü£¬ÇëÎğÉı¼¶´Ë°æ±¾ºÅ£©
+REM =====================================================
 
-REM åˆ‡æ¢åˆ° deploy/ æ‰€åœ¨ç›®å½•çš„ä¸Šçº§ï¼ˆé¡¹ç›®æ ¹ç›®å½•ï¼‰
+REM ÇĞ»»µ½ÏîÄ¿¸ùÄ¿Â¼£¨%~dp0 Ö¸Ïò±¾½Å±¾ËùÔÚ deploy\ Ä¿Â¼£©
 cd /d "%~dp0.."
 
 echo.
-echo â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
-echo â•‘   ç™½è‹æ–‡ ä¸€é”®éƒ¨ç½²å™¨ (Windows)       â•‘
-echo â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+echo ============================================
+echo     °×ËÕÎÄ (BaiSuWen) Ò»¼ü²¿ÊğÆ÷
+echo ============================================
 echo.
 
-REM æŸ¥æ‰¾ Python
-set PYTHON_EXE=
-for %%p in (python3 python py) do (
-    where %%p >nul 2>&1
-    if not errorlevel 1 (
-        set PYTHON_EXE=%%p
-        goto :found_python
-    )
-)
+REM ---------- ¼ì²â Python£ºpy -3.12¡¢py -3¡¢python¡¢python3 ----------
 
-echo [é”™è¯¯] æœªæ‰¾åˆ° Pythonï¼Œè¯·å…ˆå®‰è£… Python 3.10+
-echo        ä¸‹è½½åœ°å€: https://www.python.org/downloads/
+:try_py312
+where py >nul 2>&1
+if errorlevel 1 goto :try_py3
+py -3.12 -c "import sys;sys.exit(0 if sys.version_info>=(3,10) else 1)" >nul 2>&1
+if errorlevel 1 goto :try_py3
+set "PY_CMD=py"
+set "PY_ARGS=-3.12"
+goto :found_python
+
+:try_py3
+py -3 -c "import sys;sys.exit(0 if sys.version_info>=(3,10) else 1)" >nul 2>&1
+if errorlevel 1 goto :try_python
+set "PY_CMD=py"
+set "PY_ARGS=-3"
+goto :found_python
+
+:try_python
+where python >nul 2>&1
+if errorlevel 1 goto :try_python3
+python -c "import sys;sys.exit(0 if sys.version_info>=(3,10) else 1)" >nul 2>&1
+if errorlevel 1 goto :try_python3
+set "PY_CMD=python"
+set "PY_ARGS="
+goto :found_python
+
+:try_python3
+where python3 >nul 2>&1
+if errorlevel 1 goto :install_python
+python3 -c "import sys;sys.exit(0 if sys.version_info>=(3,10) else 1)" >nul 2>&1
+if errorlevel 1 goto :install_python
+set "PY_CMD=python3"
+set "PY_ARGS="
+goto :found_python
+
+REM ---------- ×Ô¶¯ÏÂÔØ²¢°²×° Python 3.12.10 ----------
+
+:install_python
+if defined REINSTALLED goto :manual_install
+set "REINSTALLED=1"
+echo [ĞÅÏ¢] Î´¼ì²âµ½¿ÉÓÃµÄ Python 3.10+£¬¿ªÊ¼×Ô¶¯°²×° Python 3.12.10 ...
+echo        £¨°²×°°üÔ¼ 27 MB£¬ÈôÍøÂç½ÏÂıÇëÄÍĞÄµÈ´ı£©
+
+set "PY_INSTALLER=%TEMP%\python-3.12.10-amd64.exe"
+
+REM ÏÂÔØÔ´ÓÅÏÈ¼¶£º°¢ÀïÔÆ¾µÏñ ¡ú Çå»ª¾µÏñ ¡ú ¹Ù·½Ô´
+REM Èı¸öÔ´¾ùĞèÏÔÊ½ÆôÓÃ TLS 1.2£¨PS 5.1 Ä¬ÈÏ TLS 1.0/1.1 »áµ¼ÖÂÏÂÔØÊ§°Ü£©
+set "PY_URL_ALI=https://mirrors.aliyun.com/python/3.12.10/python-3.12.10-amd64.exe"
+set "PY_URL_TUNA=https://mirrors.tuna.tsinghua.edu.cn/python/3.12.10/python-3.12.10-amd64.exe"
+set "PY_URL_OFF=https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe"
+
+echo [ĞÅÏ¢] ÕıÔÚÏÂÔØ Python °²×°°ü£¨¾µÏñÕ¾ÓÅÏÈ£¬Ê§°Ü½«×Ô¶¯ÇĞ»»Ô´£©...
+
+:try_aliyun
+del "%PY_INSTALLER%" >nul 2>&1
+echo [ĞÅÏ¢] ³¢ÊÔ°¢ÀïÔÆ¾µÏñÏÂÔØ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri '%PY_URL_ALI%' -OutFile '%PY_INSTALLER%'"
+if not exist "%PY_INSTALLER%" goto :try_tuna
+for %%F in ("%PY_INSTALLER%") do if %%~zF LSS 10000000 goto :try_tuna
+goto :download_ok
+
+:try_tuna
+del "%PY_INSTALLER%" >nul 2>&1
+echo [ĞÅÏ¢] ³¢ÊÔÇå»ª¾µÏñÏÂÔØ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri '%PY_URL_TUNA%' -OutFile '%PY_INSTALLER%'"
+if not exist "%PY_INSTALLER%" goto :try_official
+for %%F in ("%PY_INSTALLER%") do if %%~zF LSS 10000000 goto :try_official
+goto :download_ok
+
+:try_official
+del "%PY_INSTALLER%" >nul 2>&1
+echo [ĞÅÏ¢] ³¢ÊÔ¹Ù·½Ô´ÏÂÔØ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri '%PY_URL_OFF%' -OutFile '%PY_INSTALLER%'"
+if not exist "%PY_INSTALLER%" goto :manual_install
+for %%F in ("%PY_INSTALLER%") do if %%~zF LSS 10000000 goto :manual_install
+
+:download_ok
+echo [ĞÅÏ¢] ÏÂÔØÍê³É£¬ÕıÔÚ¾²Ä¬°²×°£¨ÎŞĞè¹ÜÀíÔ±È¨ÏŞ£©...
+start /wait "" "%PY_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_launcher=1 Include_test=0 Include_pip=1
+set "INSTALL_EXIT=%ERRORLEVEL%"
+if "%INSTALL_EXIT%"=="3010" set "INSTALL_EXIT=0"
+if not "%INSTALL_EXIT%"=="0" echo [¾¯¸æ] °²×°³ÌĞò·µ»ØÂë %INSTALL_EXIT%£¬¼ÌĞø¼ì²â...
+
+REM µ±Ç° cmd »á»°µÄ PATH ²»º¬ĞÂ°²×°µÄ Python£¬ÊÖ¹¤Æ´½Ó
+set "PATH=%LOCALAPPDATA%\Programs\Python\Python312;%LOCALAPPDATA%\Programs\Python\Python312\Scripts;%PATH%"
+if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" (
+    set "PY_CMD=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+    set "PY_ARGS="
+    goto :found_python
+)
+goto :try_py312
+
+REM ---------- ÊÖ¶¯°²×°Ö¸Òı ----------
+
+:manual_install
+echo.
+echo [´íÎó] Î´ÄÜ×Ô¶¯ÏÂÔØ»ò°²×° Python¡£
+echo        ÇëÊÖ¶¯Íê³ÉÒÔÏÂ²½ÖèºóÖØĞÂÔËĞĞ±¾½Å±¾£º
+echo        1. ´ò¿ª https://www.python.org/downloads/
+echo        2. ÏÂÔØ Python 3.12 ²¢°²×°£¬¹´Ñ¡ "Add python.exe to PATH"
+echo        3. °²×°Íê³ÉºóÖØĞÂË«»÷±¾½Å±¾
+start "" "https://www.python.org/downloads/"
 pause
 exit /b 1
 
+REM ---------- ÔËĞĞ²¿Êğ½Å±¾ ----------
+
 :found_python
-echo [ä¿¡æ¯] ä½¿ç”¨ Python: %PYTHON_EXE%
-
-REM æ‰§è¡Œéƒ¨ç½²è„šæœ¬
-"%PYTHON_EXE%" deploy\deploy.py
-set DEPLOY_EXIT=%ERRORLEVEL%
-
 echo.
-if %DEPLOY_EXIT% equ 0 (
-    echo [å®Œæˆ] éƒ¨ç½²è„šæœ¬æ‰§è¡Œå®Œæ¯•ã€‚
-) else (
-    echo [é”™è¯¯] éƒ¨ç½²è„šæœ¬å¼‚å¸¸é€€å‡º (exit code: %DEPLOY_EXIT%)
+echo [ĞÅÏ¢] Ê¹ÓÃ Python: %PY_CMD% %PY_ARGS%
+if not exist "deploy\deploy.py" (
+    echo [´íÎó] Î´ÕÒµ½ deploy\deploy.py£¬ÇëÈ·ÈÏ½Å±¾ËùÔÚÎ»ÖÃÕıÈ·¡£
+    pause
+    exit /b 1
 )
-
+echo.
+"%PY_CMD%" %PY_ARGS% "deploy\deploy.py"
+set "DEPLOY_EXIT=%ERRORLEVEL%"
+echo.
+if "%DEPLOY_EXIT%"=="0" (
+    echo [Íê³É] ²¿Êğ½Å±¾Ö´ĞĞÍê±Ï¡£
+) else (
+    echo [´íÎó] ²¿Êğ½Å±¾Òì³£ÍË³ö (exit code: %DEPLOY_EXIT%)
+)
 pause
+exit /b %DEPLOY_EXIT%

@@ -66,11 +66,8 @@ def step(n: int, total: int, msg: str) -> None:
 
 
 def ask(msg: str, default: str = "") -> str:
-    """询问用户输入"""
-    prompt = f"{_c(CYAN, '[ 输入 ]')} {msg}"
-    if default:
-        prompt += f" [{default}]"
-    prompt += ": "
+    """询问用户输入（不展示默认值，回车即用默认值）"""
+    prompt = f"{_c(CYAN, '[ 输入 ]')} {msg}: "
     result = input(prompt).strip()
     return result if result else default
 
@@ -197,9 +194,9 @@ def install_dependencies(venv_dir: Path) -> None:
     run_pip(venv_dir, ["install", "--upgrade", "pip", "setuptools", "wheel"],
             "升级 pip / setuptools / wheel")
 
-    # 安装 nb-cli（NoneBot 命令行工具）
-    run_pip(venv_dir, ["install", "nb-cli>=0.7.0"],
-            "安装 nb-cli (NoneBot CLI)")
+    # 安装 nb-cli 与 nonebot2（NoneBot 框架本体，先于 requirements 显式安装）
+    run_pip(venv_dir, ["install", "nb-cli>=0.7.0", "nonebot2"],
+            "安装 nb-cli (NoneBot CLI) 与 nonebot2")
 
     # 从 requirements.txt 安装所有依赖
     req_file = root / "requirements.txt"
@@ -240,16 +237,20 @@ def configure_env(root: Path) -> None:
 
     print()
     print(_c(BOLD, "══════════════════════════════════════"))
-    print(_c(BOLD, "  配置引导 — 请填写以下必填项"))
+    print(_c(BOLD, "  配置引导 — 请填写以下配置项（API Key 可留空）"))
     print(_c(BOLD, "══════════════════════════════════════"))
     print()
     print(_c(DIM, "（直接回车使用默认值/保持现状，Ctrl+C 可随时退出）"))
     print()
 
-    # ── 必填项 ──
-    deepseek_key = ask("DeepSeek API Key (必填，从 https://platform.deepseek.com/api_keys 获取)")
+    # ── API Key（可留空，留空则写入空值）──
+    deepseek_key = ask("DeepSeek API Key（没有可留空，直接回车；获取: https://platform.deepseek.com/api_keys）")
     if deepseek_key:
         content = _set_env(content, "DEEPSEEK_API_KEY", deepseek_key)
+    else:
+        content = _set_env(content, "DEEPSEEK_API_KEY", "")
+        warn("未填写 DeepSeek API Key，已写入空值，机器人暂无法使用 AI 对话")
+        warn("请稍后编辑 .env 文件补充 DEEPSEEK_API_KEY 后重启")
 
     superusers = ask("超级用户 QQ 号 (必填)", "2461292801")
     if superusers:
