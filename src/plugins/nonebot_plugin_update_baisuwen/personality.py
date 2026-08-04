@@ -1,6 +1,6 @@
 import json
 import os
-from nonebot import get_driver
+from nonebot import get_driver, logger
 from .config import plugin_config, PROJECT_ROOT
 
 _personality_cache = None
@@ -18,7 +18,22 @@ def load_personality() -> dict:
         file_path = os.path.join(PROJECT_ROOT, file_path)
 
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"人设文件不存在: {file_path}")
+        # 人设文件不存在时，从随仓库分发的模板文件自动生成（首次运行引导）
+        template_path = os.path.join(
+            os.path.dirname(file_path), "personality_traits.template.json"
+        )
+        if os.path.exists(template_path):
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_data = json.load(f)
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(template_data, f, ensure_ascii=False, indent=2)
+            logger.warning(f"人设文件不存在，已从模板生成: {file_path}")
+            logger.warning("请编辑该文件替换为你自己的角色设定后重启 Bot")
+        else:
+            raise FileNotFoundError(
+                f"人设文件不存在: {file_path}（且未找到模板文件 personality_traits.template.json）"
+            )
 
     with open(file_path, 'r', encoding='utf-8') as f:
         data = json.load(f)

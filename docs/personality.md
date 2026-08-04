@@ -1,6 +1,6 @@
 # 人设配置指南
 
-Bot 的角色人格由 `personality_traits.json` 定义。默认文件位于：
+Bot 的角色人格由 `personality_traits.json` 定义。该文件为**本地私设，不入库**（已加入 `.gitignore`），默认路径：
 
 ```
 src/plugins/nonebot_plugin_update_baisuwen/personality_traits.json
@@ -8,7 +8,14 @@ src/plugins/nonebot_plugin_update_baisuwen/personality_traits.json
 
 路径可通过 `.env` 中的 `PERSONALITY_FILE` 修改（相对于项目根目录）。
 
-> ⚠️ 仓库中的默认人设是作者私设，**部署前请务必替换为你自己的角色设定**。修改后重启 Bot 生效。
+**首次运行引导**：若该文件不存在，Bot 启动时会自动从同目录的 `personality_traits.template.json`（随仓库分发）复制生成一份，随后会有日志提示你编辑它。也可手动复制模板：
+
+```bash
+cp src/plugins/nonebot_plugin_update_baisuwen/personality_traits.template.json \
+   src/plugins/nonebot_plugin_update_baisuwen/personality_traits.json
+```
+
+> ⚠️ 自动生成的是占位模板，**部署前请务必替换为你自己的角色设定**。修改后重启 Bot 生效。
 
 ## 文件结构
 

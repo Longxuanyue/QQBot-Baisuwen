@@ -182,3 +182,6 @@ src/plugins/nonebot_plugin_tts/vits/
 # GPT-SoVITS 参考音频（580MB，不适合版本控制）
 ref_audio/*
 !ref_audio/.gitkeep
+
+# 本地人设配置（模板随仓库分发，首次运行自动从模板生成，不入库）
+src/plugins/nonebot_plugin_update_baisuwen/personality_traits.json
