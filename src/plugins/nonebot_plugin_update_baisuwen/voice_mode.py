@@ -19,25 +19,40 @@ from nonebot.params import CommandArg
 
 VOICE_MODES = ("auto", "always", "text")
 
+# ── 语音模式内存缓存（避免每次回复都开 SQLite 连接，且不创建空库文件） ──
+_mode_cache: dict = {}
+_MODE_CACHE_TTL = 60.0  # 秒
+
 
 def get_voice_mode(user_id: str, db_path: str = None) -> str:
-    """获取用户的语音回复模式"""
+    """获取用户的语音回复模式（带内存缓存）"""
+    uid = str(user_id)
+    cached = _mode_cache.get(uid)
+    if cached and time.time() - cached[1] < _MODE_CACHE_TTL:
+        return cached[0]
+
+    mode = "auto"
     if db_path is None:
         db_path = _get_user_db(user_id)
 
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT voice_mode FROM user_preferences WHERE user_id = ?",
-            (str(user_id),)
-        )
-        row = cursor.fetchone()
-        conn.close()
-        return row[0] if row else "auto"
-    except sqlite3.OperationalError:
-        # 表可能不存在
-        return "auto"
+    # 库不存在时不创建文件（用户从未有过记忆库时直接返回默认值）
+    if os.path.exists(db_path):
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT voice_mode FROM user_preferences WHERE user_id = ?",
+                (uid,)
+            )
+            row = cursor.fetchone()
+            conn.close()
+            mode = row[0] if row else "auto"
+        except sqlite3.OperationalError:
+            # 表可能不存在
+            mode = "auto"
+
+    _mode_cache[uid] = (mode, time.time())
+    return mode
 
 
 def set_voice_mode(user_id: str, mode: str, db_path: str = None) -> bool:
@@ -64,6 +79,8 @@ def set_voice_mode(user_id: str, mode: str, db_path: str = None) -> bool:
     )
     conn.commit()
     conn.close()
+    # 写后更新缓存，避免短时间内读到旧值
+    _mode_cache[str(user_id)] = (mode, time.time())
     logger.info(f"用户 {user_id} 语音模式切换为: {mode}")
     return True
 

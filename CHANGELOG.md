@@ -5,7 +5,30 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.3.0] - 2026-08-15
+
+### Added
+
+- Token 预算管理（`LLM_MAX_CONTEXT_TOKENS`）：请求超出预算时自动裁剪最旧对话历史与附加信息，避免超窗
+- 对话滚动摘要：会话超过 `DIALOG_SUMMARY_THRESHOLD` 轮后，后台将最早消息压缩为纪要注入上下文
+- 相同消息回复缓存（`REPLY_CACHE_TTL`）：TTL 内重复提问直接复用回复，节省 API 调用
+- LLM 调用失败自动重试 + 指数退避（`LLM_MAX_RETRIES` / `LLM_RETRY_BACKOFF`），高峰不再一次失败即兜底
+- 流式回复（`LLM_STREAM_REPLY`，默认关闭，实验性）：边生成边发送，新消息替换上一条
+- 记忆提取节流（`MEMORY_EXTRACT_MIN_INTERVAL`）与专用模型（`MEMORY_EXTRACT_MODEL`）；群聊非@消息不再触发提取
+- 新增 `tools/cleanup_empty_dbs.py`：一键清理历史遗留的 0 条记忆空库
+
+### Changed
+
+- **速度**：ASR 识别、silk→wav 转换、TTS 合成分散到线程池，不再阻塞事件循环；多图片并发下载；检索命中改为单连接批量更新（替代逐条开连接）；FTS5 可用性结果缓存
+- **Token**：对话历史只注入一次（移除 system prompt 中重复的历史全文）；记忆/画像注入体积裁剪；画像缓存 TTL 后台重建（`PROFILE_REFRESH_SECONDS`）
+- **记忆管理**：数据库惰性建库——用户仅发言但 bot 未回复时不再创建空库文件；夜间维护跳过空库并并发执行（上限 8 线程）
+- 语音模式读取带内存缓存，且不再为无库用户创建数据库文件
+- 新增群聊学习（`GROUP_LEARNING`，默认关闭）：群级记忆批量提取、群画像统计（活跃时段/话题/昵称/@关系/氛围分）、群风格卡、自适应回复概率、`/群学习` 管理命令
+- 群聊历史注入带说话人标注（昵称优先），避免回复张冠李戴
+- WebUI 记忆浏览新增群列表，可查看/删除群记忆
+- **记忆检索 v3**：FTS5 trigram 双表（中文子串命中）、空结果 LIKE/BM25 降级链、领域词典（`data/jieba_dict.txt`）、群聊共现动态词典、别名扩展（内置+群级别名）、检索自动拼接最近对话（指代消解）、可选向量语义检索（`ENABLE_VECTOR_SEARCH`，RRF 融合）
+- 全项目分词统一走 `text_utils`（归一化 + 词典 + lru_cache 缓存 + 后台预热）
+- 旧库自动升级：首次 `init_database` 时重建 trigram 索引（`rebuild`）并将触发器升级为双表同步（存量用户库/群库升级后即可 trigram 命中旧记忆）
 
 ## [1.2.1] - 2026-08-04
 
@@ -48,7 +71,8 @@
   - 群聊支持、WebUI 管理面板、定时休眠
   - 明日方舟-卫戍协议工具箱
 
-[Unreleased]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.0.0...v1.1.0

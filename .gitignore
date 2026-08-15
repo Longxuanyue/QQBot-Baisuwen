@@ -185,3 +185,8 @@ ref_audio/*
 
 # 本地人设配置（模板随仓库分发，首次运行自动从模板生成，不入库）
 src/plugins/nonebot_plugin_update_baisuwen/personality_traits.json
+
+# 插件静态数据（jieba 领域词典与别名表随仓库分发，非运行时数据）
+!src/plugins/nonebot_plugin_memory/data/
+!src/plugins/nonebot_plugin_memory/data/jieba_dict.txt
+!src/plugins/nonebot_plugin_memory/data/aliases.json

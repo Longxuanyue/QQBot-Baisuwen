@@ -36,6 +36,7 @@ def init_database(db_path: str):
     conn.execute('CREATE INDEX IF NOT EXISTS idx_importance ON memories(importance)')
 
     # FTS5 全文搜索虚拟表（外部内容表，数据自动同步）
+    # 双表：memories_fts（unicode61，适合英文/数字）+ memories_fts_trigram（适合中文子串）
     conn.execute('''
         CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
             content,
@@ -43,26 +44,41 @@ def init_database(db_path: str):
             content_rowid='id'
         )
     ''')
+    conn.execute('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts_trigram USING fts5(
+            content,
+            content='memories',
+            content_rowid='id',
+            tokenize='trigram'
+        )
+    ''')
 
-    # FTS5 同步触发器：插入
+    # FTS5 同步触发器：插入（双表同步；先删后建以升级旧库的单表触发器）
+    conn.execute("DROP TRIGGER IF EXISTS memories_ai")
     conn.execute('''
         CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
             INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+            INSERT INTO memories_fts_trigram(rowid, content) VALUES (new.id, new.content);
         END
     ''')
 
-    # FTS5 同步触发器：删除
+    # FTS5 同步触发器：删除（双表同步；先删后建）
+    conn.execute("DROP TRIGGER IF EXISTS memories_ad")
     conn.execute('''
         CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
             INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+            INSERT INTO memories_fts_trigram(memories_fts_trigram, rowid, content) VALUES('delete', old.id, old.content);
         END
     ''')
 
-    # FTS5 同步触发器：更新
+    # FTS5 同步触发器：更新（双表同步；先删后建）
+    conn.execute("DROP TRIGGER IF EXISTS memories_au")
     conn.execute('''
         CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
             INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
             INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+            INSERT INTO memories_fts_trigram(memories_fts_trigram, rowid, content) VALUES('delete', old.id, old.content);
+            INSERT INTO memories_fts_trigram(rowid, content) VALUES (new.id, new.content);
         END
     ''')
 
@@ -73,6 +89,20 @@ def init_database(db_path: str):
             value INTEGER
         )
     ''')
+
+    # trigram 索引回填（旧库升级：外部内容表创建时不会自动索引已有数据，
+    # 首次 init 时用 rebuild 命令全量重建一次；新库重建空表几乎无成本）
+    if conn.execute(
+        "SELECT 1 FROM maintenance_state WHERE key = 'fts_trigram_rebuilt'"
+    ).fetchone() is None:
+        conn.execute(
+            "INSERT INTO memories_fts_trigram(memories_fts_trigram) "
+            "VALUES('rebuild')"
+        )
+        conn.execute(
+            "INSERT INTO maintenance_state (key, value) "
+            "VALUES ('fts_trigram_rebuilt', 1)"
+        )
 
     # 向量嵌入表（为语义检索预留）
     conn.execute('''
@@ -158,6 +188,72 @@ def migrate_database(db_path: str = None):
                 CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
                     INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
                     INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+                END
+            ''')
+
+        # 创建 trigram FTS 表（旧库升级：缺表则创建并回填索引）
+        try:
+            cursor.execute("SELECT 1 FROM memories_fts_trigram LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute('''
+                CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts_trigram USING fts5(
+                    content,
+                    content='memories',
+                    content_rowid='id',
+                    tokenize='trigram'
+                )
+            ''')
+            cursor.execute(
+                "INSERT INTO memories_fts_trigram(rowid, content) "
+                "SELECT id, content FROM memories"
+            )
+            # 升级旧触发器为双表同步
+            cursor.execute("DROP TRIGGER IF EXISTS memories_ai")
+            cursor.execute("DROP TRIGGER IF EXISTS memories_ad")
+            cursor.execute("DROP TRIGGER IF EXISTS memories_au")
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+                    INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+                    INSERT INTO memories_fts_trigram(rowid, content) VALUES (new.id, new.content);
+                END
+            ''')
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+                    INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+                    INSERT INTO memories_fts_trigram(memories_fts_trigram, rowid, content) VALUES('delete', old.id, old.content);
+                END
+            ''')
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+                    INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+                    INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+                    INSERT INTO memories_fts_trigram(memories_fts_trigram, rowid, content) VALUES('delete', old.id, old.content);
+                    INSERT INTO memories_fts_trigram(rowid, content) VALUES (new.id, new.content);
+                END
+            ''')
+        else:
+            # 表已存在但触发器仍是旧的（单表）：确保双写触发器
+            cursor.execute("DROP TRIGGER IF EXISTS memories_ai")
+            cursor.execute("DROP TRIGGER IF EXISTS memories_ad")
+            cursor.execute("DROP TRIGGER IF EXISTS memories_au")
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+                    INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+                    INSERT INTO memories_fts_trigram(rowid, content) VALUES (new.id, new.content);
+                END
+            ''')
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+                    INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+                    INSERT INTO memories_fts_trigram(memories_fts_trigram, rowid, content) VALUES('delete', old.id, old.content);
+                END
+            ''')
+            cursor.execute('''
+                CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+                    INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+                    INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+                    INSERT INTO memories_fts_trigram(memories_fts_trigram, rowid, content) VALUES('delete', old.id, old.content);
+                    INSERT INTO memories_fts_trigram(rowid, content) VALUES (new.id, new.content);
                 END
             ''')
 

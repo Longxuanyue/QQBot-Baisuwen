@@ -4,7 +4,7 @@ nonebot_plugin_dialog - 多轮对话管理插件
 提供有状态的对话上下文管理（会话级历史、话题追踪、TTL 过期清理）。
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from nonebot.plugin import PluginMetadata
 

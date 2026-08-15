@@ -7,12 +7,13 @@
 import sqlite3
 import os
 import time
-from typing import Dict, List, Optional, Any
+import threading
+from typing import Dict, List, Optional, Any, Set
 from collections import defaultdict
 
 from nonebot import logger
 
-from .config import PROFILE_MAX_WORDS, PROFILE_UPDATE_INTERVAL
+from .config import PROFILE_MAX_WORDS, PROFILE_UPDATE_INTERVAL, PROFILE_REFRESH_SECONDS
 
 try:
     import jieba
@@ -22,11 +23,17 @@ except ImportError:
 
 
 class UserProfiler:
-    """用户画像构建器"""
+    """用户画像构建器
+
+    v2 优化：
+    - 缓存带 TTL，过期后在后台线程重建，不阻塞事件循环
+    - 冷启动（首次请求）先返回空摘要，画像异步构建，避免首条消息卡顿
+    """
 
     def __init__(self, user_data_dir: str = "user_data"):
         self.user_data_dir = user_data_dir
         self._profile_cache: Dict[str, Dict[str, Any]] = {}
+        self._building: Set[str] = set()
 
     def _get_db_path(self, user_id: str, db_type: str = "short") -> str:
         return os.path.join(self.user_data_dir, f"{db_type}_{user_id}.db")
@@ -106,9 +113,9 @@ class UserProfiler:
         return prefs
 
     def extract_top_keywords(self, user_id: str, top_n: int = 20) -> List[str]:
-        """从记忆中提取高频关键词"""
-        if not JIEBA_AVAILABLE:
-            return []
+        """从记忆中提取高频关键词（统一走 text_utils：领域词典 + 缓存）"""
+        from ..nonebot_plugin_memory.text_utils import normalize_text, tokenize
+
         memories = self.get_all_memories(user_id)
         word_counts: Dict[str, int] = defaultdict(int)
         stopwords = {"我", "你", "他", "她", "它", "的", "了", "是", "在", "和",
@@ -116,9 +123,8 @@ class UserProfiler:
                      "吗", "呢", "吧", "啊", "哦", "嗯", "呀", "哈"}
 
         for content in memories:
-            words = jieba.lcut(content)
-            for w in words:
-                if len(w) >= 2 and w not in stopwords:
+            for w in tokenize(normalize_text(content)):
+                if w not in stopwords:
                     word_counts[w] += 1
 
         sorted_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)
@@ -144,11 +150,35 @@ class UserProfiler:
         self._profile_cache[user_id] = profile
         return profile
 
+    def _schedule_build(self, user_id: str) -> None:
+        """后台线程重建画像（防重入）"""
+        if user_id in self._building:
+            return
+        self._building.add(user_id)
+
+        def _worker():
+            try:
+                self.build_profile(user_id)
+            except Exception as e:
+                logger.debug(f"画像后台构建失败: {e}")
+            finally:
+                self._building.discard(user_id)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def get_profile_summary(self, user_id: str) -> str:
-        """生成画像文本摘要（用于注入 system prompt）"""
+        """生成画像文本摘要（用于注入 system prompt）。
+
+        缓存未命中或过期时：后台线程异步重建，本轮先返回已有/空摘要，
+        避免首次请求阻塞事件循环。
+        """
         profile = self._profile_cache.get(user_id)
+        now = time.time()
         if profile is None:
-            profile = self.build_profile(user_id)
+            self._schedule_build(user_id)
+            return ""
+        if now - profile.get("updated_at", 0) > PROFILE_REFRESH_SECONDS:
+            self._schedule_build(user_id)
 
         lines = []
         mem_count = profile.get("memory_count", 0)
@@ -176,7 +206,11 @@ class UserProfiler:
         if keywords:
             lines.append(f"关注话题: {'、'.join(keywords[:10])}")
 
-        return "\n".join(lines)
+        text = "\n".join(lines)
+        # 体积上限：防止画像过大挤占上下文预算
+        if len(text) > PROFILE_MAX_WORDS:
+            text = text[:PROFILE_MAX_WORDS]
+        return text
 
 
 # 全局实例

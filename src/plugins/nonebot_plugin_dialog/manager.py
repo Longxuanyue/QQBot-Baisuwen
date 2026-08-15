@@ -10,8 +10,8 @@
 
 import time
 import asyncio
-from collections import defaultdict, deque
-from typing import Dict, List, Optional, Tuple
+from collections import deque
+from typing import Dict, List, Optional
 from nonebot import logger
 
 from .config import DIALOG_MAX_TURNS, DIALOG_SESSION_TTL
@@ -22,7 +22,8 @@ class DialogSession:
 
     __slots__ = (
         "session_id", "messages", "current_topic",
-        "created_at", "last_active", "user_id", "is_group"
+        "created_at", "last_active", "user_id", "is_group",
+        "summary", "last_summary_ts"
     )
 
     def __init__(self, session_id: str, user_id: str = "", is_group: bool = False):
@@ -33,15 +34,51 @@ class DialogSession:
         self.last_active: float = time.time()
         self.user_id = user_id
         self.is_group = is_group
+        # 滚动摘要：最早的消息被压缩成短摘要，注入上下文以替代原始消息
+        self.summary: str = ""
+        self.last_summary_ts: float = 0.0
 
-    def add_turn(self, role: str, content: str):
-        """添加一轮对话"""
-        self.messages.append({"role": role, "content": content})
+    def add_turn(self, role: str, content: str, speaker_id: Optional[str] = None):
+        """添加一轮对话（speaker_id 为说话人 QQ，用于群聊说话人标注）"""
+        msg: Dict[str, str] = {"role": role, "content": content}
+        if speaker_id:
+            msg["user_id"] = speaker_id
+        self.messages.append(msg)
         self.last_active = time.time()
 
     def get_context(self, last_n: int = 10) -> List[Dict[str, str]]:
         """获取最近 N 轮对话上下文"""
         return list(self.messages)[-last_n * 2:] if self.messages else []
+
+    # ── 滚动摘要 ──
+
+    def get_summary(self) -> str:
+        """获取会话滚动摘要（无则返回空字符串）"""
+        return self.summary
+
+    def set_summary(self, summary_text: str):
+        """合并并更新滚动摘要"""
+        if not summary_text:
+            return
+        if self.summary:
+            self.summary = f"{self.summary}\n{summary_text}"
+        else:
+            self.summary = summary_text
+        # 摘要文本过长时截断，避免占用过多上下文预算
+        if len(self.summary) > 600:
+            self.summary = self.summary[:600]
+        self.last_summary_ts = time.time()
+
+    def pop_oldest(self, n: int) -> int:
+        """移除最旧的 n 条消息，返回实际移除数量"""
+        n = max(0, min(n, len(self.messages)))
+        if n == 0:
+            return 0
+        remaining = list(self.messages)[n:]
+        self.messages.clear()
+        self.messages.extend(remaining)
+        self.last_active = time.time()
+        return n
 
     def is_expired(self, ttl_seconds: float = DIALOG_SESSION_TTL) -> bool:
         """检查会话是否过期"""
@@ -95,10 +132,11 @@ class DialogManager:
         return self._sessions[sid]
 
     def add_turn(self, user_id: str, role: str, content: str,
-                 group_id: Optional[int] = None):
-        """添加一轮对话到用户会话"""
+                 group_id: Optional[int] = None,
+                 speaker_id: Optional[str] = None):
+        """添加一轮对话到用户会话（speaker_id 用于群聊说话人标注）"""
         session = self.get_or_create_session(user_id, group_id)
-        session.add_turn(role, content)
+        session.add_turn(role, content, speaker_id)
 
     def get_context(self, user_id: str, group_id: Optional[int] = None,
                     last_n: int = 10) -> List[Dict[str, str]]:
@@ -128,6 +166,29 @@ class DialogManager:
             self._sessions[sid].clear()
             logger.info(f"已清除会话: {sid}")
 
+    # ── 滚动摘要代理 ──
+
+    def get_summary(self, user_id: str, group_id: Optional[int] = None) -> str:
+        """获取会话滚动摘要"""
+        sid = self._session_id(user_id, group_id)
+        session = self._sessions.get(sid)
+        return session.get_summary() if session else ""
+
+    def set_summary(self, user_id: str, summary_text: str,
+                    group_id: Optional[int] = None) -> None:
+        """写入会话滚动摘要（自动合并旧摘要）"""
+        session = self.get_or_create_session(user_id, group_id)
+        session.set_summary(summary_text)
+
+    def pop_oldest(self, user_id: str, n: int,
+                   group_id: Optional[int] = None) -> int:
+        """移除会话最旧的 n 条消息"""
+        sid = self._session_id(user_id, group_id)
+        session = self._sessions.get(sid)
+        if session is None:
+            return 0
+        return session.pop_oldest(n)
+
     # ── 话题管理 ──
 
     def set_topic(self, user_id: str, topic: str,
@@ -149,7 +210,7 @@ class DialogManager:
     def detect_topic_change(self, user_id: str, new_message: str,
                             group_id: Optional[int] = None) -> bool:
         """简单话题变更检测：基于关键词变化"""
-        import jieba
+        from ..nonebot_plugin_memory.text_utils import tokenize
         session = self.get_or_create_session(user_id, group_id)
         if not session.messages:
             return False
@@ -158,8 +219,8 @@ class DialogManager:
         recent_text = " ".join(
             m["content"] for m in list(session.messages)[-4:]
         )
-        old_words = set(jieba.lcut(recent_text))
-        new_words = set(jieba.lcut(new_message))
+        old_words = set(tokenize(recent_text))
+        new_words = set(tokenize(new_message))
 
         # 如果新词占比超过 70%，视为话题变化
         if not new_words:

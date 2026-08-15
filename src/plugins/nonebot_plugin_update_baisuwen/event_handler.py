@@ -10,14 +10,19 @@ v2 集成:
 """
 
 import random
+import re
+import time
 import asyncio
+from contextlib import suppress
 from collections import defaultdict, deque
+from typing import Any, Optional
 from nonebot import on_message, get_driver, logger
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, MessageSegment
 from .config import plugin_config
 from .memory_manager import MemoryManager
 from .llm_client import llm_client
 from .personality import get_system_prompt_with_personality
+from .token_budget import trim_messages, truncate_text
 from .utils import download_voice_file, silk_to_wav, audio_to_qq_voice
 
 # ── 全局模型实例 ──
@@ -29,6 +34,33 @@ _last_reply_time: dict = defaultdict(float)
 
 # ── 群聊历史缓存（用于主动互动时的上下文） ──
 group_chat_history: dict = defaultdict(lambda: deque(maxlen=50))
+
+# ── 记忆提取节流（每用户最小间隔） ──
+_last_memory_extract: dict = defaultdict(float)
+
+# ── 对话滚动摘要节流（按会话） ──
+_last_summary_at: dict = {}
+
+# ── 回复缓存 ──
+_reply_cache: dict = {}
+# 时间敏感消息不命中缓存，避免给出过期答案
+_TIME_SENSITIVE_RE = re.compile(r"几点|几点钟|时间|日期|今天|明天|昨天|星期|几号|现在.*[点时]")
+
+# ── 阈值常量 ──
+_EXTRACT_MIN_TEXT_LEN = 6   # 记忆提取的最短消息长度
+_REPLY_CACHE_MAX = 512      # 回复缓存上限（条）
+_STREAM_MIN_DELTA = 2       # 流式刷新最小增量（字符）
+_STREAM_FLUSH_CHARS = 24    # 流式刷新阈值（字符）
+
+# 后台任务引用集合（防止任务被 GC 回收）
+_bg_tasks: set = set()
+
+
+def _spawn(coro) -> None:
+    """创建后台任务并保留引用"""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
 
 
 def init_services():
@@ -95,6 +127,8 @@ def init_services():
 
 async def process_voice_message(bot: Bot, event: MessageEvent, file_id: str) -> str:
     """处理语音消息，返回识别出的文本。失败时返回空字符串。"""
+    if asr_model is None:
+        return ""
     try:
         local_path = await download_voice_file(bot, file_id)
         if not local_path:
@@ -102,11 +136,13 @@ async def process_voice_message(bot: Bot, event: MessageEvent, file_id: str) -> 
         # 非 wav 格式需要先转换为 wav（silk、amr 等 Whisper 无法直接解码）
         if not local_path.lower().endswith((".wav", ".mp3", ".m4a", ".flac", ".ogg")):
             wav_path = local_path + ".wav"
-            if not silk_to_wav(local_path, wav_path):
+            # silk 解码/ffmpeg 转换为 CPU 密集阻塞操作，迁移到线程池
+            if not await asyncio.to_thread(silk_to_wav, local_path, wav_path):
                 logger.warning(f"语音格式转换失败 ({local_path})，将尝试直接用 Whisper 识别")
             else:
                 local_path = wav_path
-        text = asr_model.transcribe_file(local_path)
+        # Whisper 推理为同步阻塞调用，迁移到线程池，避免阻塞事件循环
+        text = await asyncio.to_thread(asr_model.transcribe_file, local_path)
         return text
     except Exception as e:
         logger.error(f"语音识别处理失败: {e}")
@@ -137,10 +173,14 @@ async def generate_and_store_memory_llm(
 记忆："""
 
     try:
+        kwargs = {}
+        if plugin_config.memory_extract_model:
+            kwargs["model"] = plugin_config.memory_extract_model
         response = await llm_client.chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
-            max_tokens=150
+            max_tokens=150,
+            **kwargs
         )
         response = response.strip()
         if response == "无" or not response:
@@ -168,6 +208,164 @@ async def generate_and_store_memory_llm(
             logger.debug(f"记忆存储失败（可能重复或无效）: {content}")
     except Exception as e:
         logger.error(f"LLM 生成记忆失败: {e}")
+
+
+# ── 记忆提取节流 ──
+
+def _should_extract_memory(
+    user_id: str, msg_text: str, *, is_group: bool, event: MessageEvent
+) -> bool:
+    """记忆提取节流：群聊非@不提取、短消息不提取、每用户最小间隔"""
+    if is_group and not event.to_me:
+        return False
+    if len(msg_text.strip()) < _EXTRACT_MIN_TEXT_LEN:
+        return False
+    now = time.time()
+    last = _last_memory_extract.get(user_id, 0.0)
+    if now - last < plugin_config.memory_extract_min_interval:
+        return False
+    _last_memory_extract[user_id] = now
+    return True
+
+
+# ── 对话滚动摘要 ──
+
+def _maybe_summarize_dialog(
+    user_id: str, group_id: Any = None, dialog_manager: Any = None
+) -> None:
+    """会话轮数超阈值时，后台压缩最早的一半消息为滚动摘要"""
+    try:
+        turns = len(dialog_manager.get_context(user_id, group_id, last_n=1000)) // 2
+        if turns < plugin_config.dialog_summary_threshold:
+            return
+        key = (user_id, group_id or "private")
+        now = time.time()
+        last = _last_summary_at.get(key, 0.0)
+        if now - last < plugin_config.dialog_summary_min_interval:
+            return
+        _last_summary_at[key] = now
+        context = dialog_manager.get_context(user_id, group_id, last_n=1000)
+        oldest = context[: len(context) // 2]
+        if not oldest:
+            return
+        _spawn(_summarize_and_compact(user_id, group_id, oldest, dialog_manager))
+    except Exception as e:
+        logger.debug(f"滚动摘要调度失败: {e}")
+
+
+async def _summarize_and_compact(
+    user_id: str,
+    group_id: Any = None,
+    oldest_msgs: Optional[list[dict]] = None,
+    dialog_manager: Any = None,
+) -> None:
+    """调用 LLM 压缩最早的消息，写入会话摘要并移除原文"""
+    if not oldest_msgs:
+        return
+    try:
+        lines = "\n".join(
+            (
+                f"用户{m.get('user_id', '?')}: {m['content'][:200]}"
+                if m["role"] == "user"
+                else f"你: {m['content'][:200]}"
+            )
+            for m in oldest_msgs
+        )
+        prompt = (
+            f"请用2-3句话总结以下对话的要点（主题、关键信息、双方的约定与喜好）。\n"
+            f"只输出总结内容：\n{lines}"
+        )
+        summary = await llm_client.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=120,
+        )
+        summary = summary.strip()
+        if summary:
+            dialog_manager.set_summary(user_id, summary, group_id)
+            dialog_manager.pop_oldest(user_id, len(oldest_msgs), group_id)
+            logger.info(
+                f"对话滚动摘要完成 | user={user_id} | 压缩 {len(oldest_msgs)} 条消息"
+            )
+    except Exception as e:
+        logger.debug(f"对话滚动摘要失败: {e}")
+
+
+# ── 回复缓存 ──
+
+def _cache_key(user_id: str, group_id: Any, msg_text: str) -> str:
+    return f"{user_id}|{group_id or 'private'}|{msg_text}"
+
+
+def _get_cached_reply(user_id: str, group_id: Any, msg_text: str) -> str:
+    """获取缓存的回复；时间敏感消息不命中"""
+    if plugin_config.reply_cache_ttl <= 0:
+        return ""
+    if _TIME_SENSITIVE_RE.search(msg_text):
+        return ""
+    key = _cache_key(user_id, group_id, msg_text)
+    entry = _reply_cache.get(key)
+    if not entry:
+        return ""
+    ts, reply = entry
+    if time.time() - ts > plugin_config.reply_cache_ttl:
+        _reply_cache.pop(key, None)
+        return ""
+    return reply
+
+
+def _set_cached_reply(
+    user_id: str, group_id: Any, msg_text: str, reply: str
+) -> None:
+    """写入回复缓存（带上限，防止无限增长）"""
+    if plugin_config.reply_cache_ttl <= 0 or not reply:
+        return
+    if len(_reply_cache) >= _REPLY_CACHE_MAX:
+        keys = list(_reply_cache.keys())
+        for k in keys[: len(keys) // 2]:
+            _reply_cache.pop(k, None)
+    _reply_cache[_cache_key(user_id, group_id, msg_text)] = (time.time(), reply)
+
+
+# ── 流式回复 ──
+
+async def _stream_reply(
+    bot: Bot, event: MessageEvent, messages: list[dict]
+) -> str:
+    """流式回复：边生成边发送，新消息替换上一条（OneBot delete_msg）。"""
+    prev_id = None
+    buffer = ""
+    last_sent = ""
+    try:
+        async for delta in llm_client.chat_completion_stream(messages):
+            buffer += delta
+            if len(buffer) - len(last_sent) < _STREAM_MIN_DELTA:
+                continue
+            # 每 ~24 字符或遇到句末标点刷新一次
+            if len(buffer) - len(last_sent) >= _STREAM_FLUSH_CHARS or any(
+                ch in buffer[len(last_sent):] for ch in "。！？!?\n"
+            ):
+                sent = await bot.send(event, MessageSegment.text(buffer))
+                mid = sent if isinstance(sent, (str, int)) else getattr(
+                    sent, "message_id", None
+                )
+                if prev_id is not None:
+                    with suppress(Exception):
+                        await bot.delete_msg(message_id=prev_id)
+                prev_id = mid
+                last_sent = buffer
+        if buffer and last_sent != buffer:
+            sent = await bot.send(event, MessageSegment.text(buffer))
+            mid = sent if isinstance(sent, (str, int)) else getattr(
+                sent, "message_id", None
+            )
+            if prev_id is not None and mid != prev_id:
+                with suppress(Exception):
+                    await bot.delete_msg(message_id=prev_id)
+    except Exception as e:
+        logger.error(f"流式回复失败: {e}")
+        raise
+    return buffer
 
 
 # ── 辅助函数 ──
@@ -210,25 +408,38 @@ def _should_use_voice(is_group: bool, user_id: str, *, incoming_voice: bool = Fa
 
 async def _build_system_prompt_with_context(
     user_id: str, msg_text: str, is_group: bool,
-    group_id: int = None
+    group_id: Optional[int] = None
 ) -> str:
     """构建包含人设、记忆、画像、情感、对话上下文的完整 system prompt"""
 
-    # 1. 记忆检索
+    # 1. 记忆检索（上下文感知：拼最近对话解决指代，如"那个活动"）
     mem_mgr = MemoryManager.get_manager(user_id)
+    history = []
+    try:
+        from ..nonebot_plugin_dialog import dialog_manager
+        hctx = dialog_manager.get_context(user_id, group_id, last_n=2)
+        history = [m["content"] for m in hctx if m.get("role") == "user"]
+    except Exception:
+        pass
     memories = mem_mgr.retrieve_memories(
-        msg_text, top_k=plugin_config.memory_top_k, update_access=True
+        msg_text, top_k=plugin_config.memory_top_k, update_access=True,
+        conversation_history=history[-2:] or None,
     )
     memory_context = (
         "\n".join([f"- {m['content']}" for m in memories])
         if memories else "无相关记忆"
     )
+    # 记忆上下文体积裁剪，限制注入 token
+    if memory_context != "无相关记忆":
+        memory_context = truncate_text(memory_context, 400)
 
     # 2. 用户画像（如果有）
     profile_text = ""
     try:
         from ..nonebot_plugin_profile import profiler
         profile_text = profiler.get_profile_summary(user_id)
+        if profile_text:
+            profile_text = truncate_text(profile_text, 200)
     except Exception:
         pass
 
@@ -240,13 +451,11 @@ async def _build_system_prompt_with_context(
     except Exception:
         pass
 
-    # 4. 对话历史上下文（如果有多轮对话管理器）
-    dialog_context = ""
+    # 4. 当前话题（轻量注入；完整历史由 messages 数组承载，避免重复计费）
+    topic_hint = ""
     try:
         from ..nonebot_plugin_dialog import dialog_manager
-        dialog_context = dialog_manager.get_context_text(
-            user_id, group_id, last_n=4
-        )
+        topic_hint = dialog_manager.get_topic(user_id, group_id)
     except Exception:
         pass
 
@@ -259,8 +468,18 @@ async def _build_system_prompt_with_context(
         additions.append(f"关于该用户的信息：\n{profile_text}")
     if emotion_hint:
         additions.append(emotion_hint)
-    if dialog_context:
-        additions.append(f"最近的对话历史：\n{dialog_context}")
+    if topic_hint:
+        additions.append(f"当前话题：{topic_hint}")
+
+    # 5.5 群聊：注入群上下文块（群记忆/风格卡/话题/昵称，预算受限）
+    if is_group and group_id is not None:
+        try:
+            from ..nonebot_plugin_groupmind import groupmind
+            group_ctx = groupmind.build_group_context(group_id, msg_text)
+            if group_ctx:
+                additions.append(group_ctx)
+        except Exception:
+            pass
 
     if additions:
         system_prompt += "\n\n" + "\n\n".join(additions)
@@ -347,9 +566,6 @@ async def handle_message(bot: Bot, event: MessageEvent):
         logger.info("消息文本为空，跳过处理")
         return
 
-    # 获取用户记忆管理器
-    mem_mgr = MemoryManager.get_manager(user_id)
-
     # 群聊限流逻辑
     group_id = event.group_id if is_group else None
 
@@ -359,22 +575,42 @@ async def handle_message(bot: Bot, event: MessageEvent):
             event.user_id, msg_text, 0
         ))
 
+        # ── 群聊学习采集（内存缓冲 + 异步批量写盘，不阻塞主链路） ──
+        try:
+            from ..nonebot_plugin_groupmind import groupmind
+            await groupmind.ingest(bot, event, msg_text)
+        except Exception as e:
+            logger.debug(f"群聊学习采集失败: {e}")
+
         if event.to_me:
             pass  # 必定回复
         else:
-            import time as _time
-            now = _time.time()
+            now = time.time()
             last_time = _last_reply_time.get(event.group_id, 0)
             if now - last_time < plugin_config.group_chat.reply_cooldown_seconds:
                 return
-            if random.random() >= plugin_config.group_reply_probability:
+            # 自适应回复概率：基础概率 × 群氛围分（需开启 GROUP_ADAPTIVE_PROBABILITY）
+            prob = plugin_config.group_reply_probability
+            if prob > 0:
+                try:
+                    from ..nonebot_plugin_groupmind import groupmind
+                    prob *= groupmind.get_adaptive_factor(event.group_id)
+                except Exception:
+                    pass
+            if random.random() >= prob:
                 return
             _last_reply_time[event.group_id] = now
+
+    # 确认回复后才初始化记忆管理器（惰性建库，避免为不回复的群消息创建空库）
+    mem_mgr = MemoryManager.get_manager(user_id)
 
     # ── 更新对话管理器 ──
     try:
         from ..nonebot_plugin_dialog import dialog_manager
-        dialog_manager.add_turn(user_id, "user", msg_text, group_id)
+        dialog_manager.add_turn(
+            user_id, "user", msg_text, group_id,
+            speaker_id=user_id if is_group else None,
+        )
     except Exception:
         pass
 
@@ -386,13 +622,48 @@ async def handle_message(bot: Bot, event: MessageEvent):
     # ── 构建 messages ──
     messages = [{"role": "system", "content": system_prompt}]
 
+    # 注入滚动摘要（更早对话的压缩纪要，替代被压缩掉的原始消息）
+    try:
+        from ..nonebot_plugin_dialog import dialog_manager
+        summary = dialog_manager.get_summary(user_id, group_id)
+        if summary:
+            messages.insert(
+                1,
+                {"role": "system", "content": f"对话纪要（更早的对话）：\n{summary}"},
+            )
+    except Exception:
+        pass
+
     # 尝试注入多轮对话历史（作为 assistant/user 交替消息）
     try:
         from ..nonebot_plugin_dialog import dialog_manager
         context = dialog_manager.get_context(user_id, group_id, last_n=6)
         if context and not (is_group and not event.to_me):
-            # 私聊或被@时注入完整对话历史
-            messages.extend(context)
+            if is_group:
+                # 群聊：标注每条用户消息的说话人（昵称优先），避免张冠李戴
+                try:
+                    from ..nonebot_plugin_groupmind import groupmind
+                except Exception:
+                    groupmind = None
+                labeled = []
+                for m in context:
+                    if (
+                        m.get("role") == "user"
+                        and m.get("user_id")
+                        and groupmind is not None
+                    ):
+                        label = groupmind.format_speaker(
+                            group_id, m["user_id"]
+                        )
+                        labeled.append({
+                            **m,
+                            "content": f"用户{label}：{m['content']}",
+                        })
+                    else:
+                        labeled.append(m)
+                messages.extend(labeled)
+            else:
+                messages.extend(context)
     except Exception:
         pass
 
@@ -400,7 +671,7 @@ async def handle_message(bot: Bot, event: MessageEvent):
                for m in messages):
         # 构建用户消息
         if is_group and not event.to_me:
-            # 主动互动：附上群聊上下文
+            # 主动互动：附上群聊上下文（唯一的历史注入点，避免重复计费）
             history_list = list(group_chat_history.get(event.group_id, []))
             recent = history_list[-5:]
             history_text = ""
@@ -420,32 +691,59 @@ async def handle_message(bot: Bot, event: MessageEvent):
         else:
             messages.append({"role": "user", "content": msg_text})
 
-    # ── 调用 LLM ──
-    logger.info(f"调用 LLM | model={llm_client.model} | messages={len(messages)} 条")
-    try:
-        reply = await llm_client.chat_completion(messages)
-        logger.info(f"LLM 回复 | len={len(reply)} | text={reply[:80]}...")
-    except Exception as e:
-        logger.error(f"LLM 调用失败: {e}")
-        reply = "呜呜呜，小白的脑袋好像过载了……快去联系龙小月主人┭┮﹏┭┮"
+    # ── Token 预算裁剪：超出预算时优先丢弃最旧历史 ──
+    messages = trim_messages(messages, plugin_config.max_context_tokens)
+
+    # 语音模式判定（用于流式/语音发送决策）
+    use_voice = _should_use_voice(is_group, user_id, incoming_voice=was_voice)
+
+    # ── 回复缓存：相同消息在 TTL 内直接复用，省一次 LLM 调用 ──
+    cached_reply = _get_cached_reply(user_id, group_id, msg_text)
+    if cached_reply:
+        logger.info(f"回复缓存命中 | user={user_id}")
+        reply = cached_reply
+    else:
+        # ── 调用 LLM ──
+        logger.info(
+            f"调用 LLM | model={llm_client.model} | messages={len(messages)} 条"
+        )
+        try:
+            if plugin_config.stream_reply and not use_voice:
+                reply = await _stream_reply(bot, event, messages)
+            else:
+                reply = await llm_client.chat_completion(messages)
+            logger.info(f"LLM 回复 | len={len(reply)} | text={reply[:80]}...")
+            _set_cached_reply(user_id, group_id, msg_text, reply)
+        except Exception as e:
+            logger.error(f"LLM 调用失败: {e}")
+            reply = "呜呜呜，小白的脑袋好像过载了……快去联系龙小月主人┭┮﹏┭┮"
     try:
         from ..nonebot_plugin_dialog import dialog_manager
         dialog_manager.add_turn(user_id, "assistant", reply, group_id)
+        # 会话过长时触发后台滚动摘要
+        _maybe_summarize_dialog(user_id, group_id, dialog_manager)
     except Exception:
         pass
 
-    # ── 后台记忆生成 ──
-    asyncio.create_task(
-        generate_and_store_memory_llm(user_id, msg_text, reply, mem_mgr)
-    )
+    # ── 后台记忆生成（节流 + 群聊非@不提取） ──
+    if _should_extract_memory(
+        user_id, msg_text, is_group=is_group, event=event
+    ):
+        asyncio.create_task(
+            generate_and_store_memory_llm(user_id, msg_text, reply, mem_mgr)
+        )
 
     # ── 发送回复 ──
-    use_voice = _should_use_voice(is_group, user_id, incoming_voice=was_voice)
     logger.info(f"发送回复 | voice={use_voice} | len={len(reply)}")
 
     if use_voice:
+        if tts_model is None:
+            await bot.send(event, reply)
+            return
         try:
-            sr, audio = tts_model.synthesize(
+            # TTS 合成为 CPU/GPU 密集阻塞操作，迁移到线程池
+            sr, audio = await asyncio.to_thread(
+                tts_model.synthesize,
                 reply,
                 speed=plugin_config.tts_speed,
                 noise_scale=plugin_config.tts_noise_scale,
@@ -458,3 +756,11 @@ async def handle_message(bot: Bot, event: MessageEvent):
             await bot.send(event, reply)
     else:
         await bot.send(event, reply)
+
+    # ── 群聊学习：记录 bot 回复（开启氛围分接话窗口） ──
+    if is_group:
+        try:
+            from ..nonebot_plugin_groupmind import groupmind
+            groupmind.note_bot_reply(event.group_id)
+        except Exception:
+            pass

@@ -282,9 +282,26 @@ async def page_memory(request: Request):
         provider = memory_registry.get()
         users = await provider.get_all_users()
 
+    # 群聊学习群列表（如已加载）
+    groups = []
+    try:
+        from ..nonebot_plugin_groupmind import groupmind
+        groups = [
+            {
+                "group_id": gid,
+                "memory_count": groupmind.get_group_stats(gid).get(
+                    "memory_count", 0
+                ),
+            }
+            for gid in groupmind.list_group_ids()
+        ]
+    except Exception:
+        pass
+
     ctx.update({
         "active_page": "memory",
         "users": users,
+        "groups": groups,
         "can_delete": "memory.delete" in permissions,
         "can_clear": "memory.clear" in permissions,
         "has_provider": memory_registry.has_provider,
@@ -572,7 +589,20 @@ async def api_memory_users(request: Request):
             "total_count": stats.total_count,
         })
 
-    return JSONResponse({"users": user_stats})
+    # 群聊学习群库列表（如已加载）
+    groups = []
+    try:
+        from ..nonebot_plugin_groupmind import groupmind
+        for gid in groupmind.list_group_ids():
+            gstats = groupmind.get_group_stats(gid)
+            groups.append({
+                "group_id": gid,
+                "memory_count": gstats.get("memory_count", 0),
+            })
+    except Exception:
+        pass
+
+    return JSONResponse({"users": user_stats, "groups": groups})
 
 
 @webui_app.get("/api/memory/{user_id}")
@@ -590,6 +620,41 @@ async def api_memory_get(
 
     if not memory_registry.has_provider:
         return JSONResponse({"error": "记忆后端未注册"}, status_code=500)
+
+    # 群聊学习：群记忆查询（user_id 形如 group:{gid}）
+    if user_id.startswith("group:"):
+        gid = user_id[len("group:"):]
+        try:
+            from ..nonebot_plugin_groupmind import groupmind
+            entries = groupmind.list_group_memories(gid, limit=500)
+            if search:
+                entries = [
+                    e for e in entries if search in e["content"]
+                ]
+            total = len(entries)
+            start = (page - 1) * page_size
+            page_entries = entries[start:start + page_size]
+            return JSONResponse({
+                "entries": [
+                    {
+                        "id": e["id"],
+                        "content": e["content"],
+                        "importance": e["importance"],
+                        "strength": e["strength"],
+                        "access_count": e["access_count"],
+                        "last_accessed": str(e["last_accessed"]),
+                        "source": "group",
+                        "created_at": "",
+                    }
+                    for e in page_entries
+                ],
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "user_id": user_id,
+            })
+        except Exception as e:
+            return JSONResponse({"error": f"群记忆加载失败: {e}"}, status_code=500)
 
     provider = memory_registry.get()
     result = await provider.get_memories(
@@ -630,6 +695,21 @@ async def api_memory_delete(request: Request, user_id: str, memory_id: str):
     if not memory_registry.has_provider:
         return JSONResponse({"error": "记忆后端未注册"}, status_code=500)
 
+    if user_id.startswith("group:"):
+        gid = user_id[len("group:"):]
+        try:
+            from ..nonebot_plugin_groupmind import groupmind
+            ok = groupmind.delete_group_memory(gid, memory_id)
+        except Exception:
+            ok = False
+        log_action(
+            webui_user, "memory.delete",
+            target=f"group={gid}",
+            detail=f"删除群记忆 {memory_id}",
+            ip=_get_client_ip(request),
+        )
+        return JSONResponse({"ok": ok})
+
     provider = memory_registry.get()
     ok = await provider.delete_memory(user_id, memory_id)
 
@@ -652,6 +732,21 @@ async def api_memory_clear(request: Request, user_id: str):
 
     if not memory_registry.has_provider:
         return JSONResponse({"error": "记忆后端未注册"}, status_code=500)
+
+    if user_id.startswith("group:"):
+        gid = user_id[len("group:"):]
+        try:
+            from ..nonebot_plugin_groupmind import groupmind
+            count = groupmind.clear_group_data(gid)
+        except Exception:
+            count = 0
+        log_action(
+            webui_user, "memory.clear",
+            target=f"group={gid}",
+            detail=f"清空 {count} 条群记忆",
+            ip=_get_client_ip(request),
+        )
+        return JSONResponse({"ok": True, "deleted": count})
 
     provider = memory_registry.get()
     count = await provider.delete_all_memories(user_id)

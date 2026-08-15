@@ -53,6 +53,12 @@ copy .env.example .env
 | `DEEPSEEK_API_BASE` | `https://api.deepseek.com` | API 基础 URL，可替换为任何 OpenAI 兼容端点 |
 | `DEEPSEEK_MODEL` | `deepseek-v4-pro` | 模型名称。DeepSeek 推荐 `deepseek-chat`（V3）/ `deepseek-v4-pro`。**多模态图片理解需要模型支持 vision 能力** |
 | `HTTPX_TIMEOUT` | `60` | LLM HTTP 请求超时（秒），生成长回复建议 ≥ 60 |
+| `LLM_MAX_CONTEXT_TOKENS` | `8192` | 单次请求上下文预算（token 估算值）。超出时按优先级裁剪：最旧对话历史 → 记忆/画像 → system prompt 尾部 |
+| `LLM_MAX_RETRIES` | `2` | LLM 调用失败重试次数（429/5xx/网络错误时指数退避） |
+| `LLM_RETRY_BACKOFF` | `1.0` | 重试退避基础间隔（秒），实际等待 = backoff × 2^(attempt-1)，上限 10s |
+| `LLM_STREAM_REPLY` | `false` | 流式回复（实验性）：边生成边发送，新消息替换上一条。开启后群聊消息会频繁发送/删除，慎用 |
+| `MEMORY_EXTRACT_MIN_INTERVAL` | `300` | 记忆提取最小间隔（秒）。群聊非@消息与过短消息不触发提取 |
+| `MEMORY_EXTRACT_MODEL` | 空 | 记忆提取专用模型（可填更便宜的型号），留空与主对话同模型 |
 
 ## 四、OneBot V11 协议
 
@@ -73,6 +79,9 @@ copy .env.example .env
 |--------|--------|------|
 | `DIALOG_MAX_TURNS` | `20` | 会话保留的最大对话轮数，超出后最早的轮次移出上下文窗口 |
 | `DIALOG_SESSION_TTL` | `1800` | 会话超时时间（秒），超时无新消息自动清理。`1800` = 30 分钟 |
+| `DIALOG_SUMMARY_THRESHOLD` | `16` | 会话轮数超过该值后，后台把最早的一半消息压缩成滚动摘要注入上下文 |
+| `DIALOG_SUMMARY_MIN_INTERVAL` | `600` | 两次滚动摘要之间的最小间隔（秒） |
+| `REPLY_CACHE_TTL` | `600` | 相同消息回复缓存有效期（秒）；时间敏感消息不命中；设为 `0` 关闭 |
 
 ## 七、休眠与定时任务
 
@@ -85,6 +94,22 @@ copy .env.example .env
 
 ## 八、记忆系统
 
+
+### 检索优化（v3）
+
+记忆检索已升级为多级链路，无需配置即可生效：
+
+1. **FTS5 双表**：`unicode61`（英文/数字）+ `trigram`（中文任意子串）。`「咖啡」` 现在可以命中 `「用户喜欢喝咖啡」`
+2. **空结果降级链**：FTS 无结果时自动降级 `LIKE`（核心词+别名）→ `BM25`
+3. **领域词典**：`src/plugins/nonebot_plugin_memory/data/jieba_dict.txt`（游戏名/梗/网络词，修复 `明日方舟` 被切碎的问题）
+4. **动态词典**：群聊学习每日任务从消息共现中学习新词，持久化到 `user_data/dynamic_jieba_dict.txt`
+5. **别名扩展**：内置 `data/aliases.json`（`粥`→`明日方舟`）+ 群风格卡提炼的群级别名，检索时自动 OR 扩展
+6. **上下文感知**：检索自动拼接最近 2 轮对话，解决 `「那个活动」` 类指代
+7. **向量语义检索**（可选）：`ENABLE_VECTOR_SEARCH=true` 后夜间为记忆计算向量，检索时 RRF 融合字面+语义结果
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `ENABLE_VECTOR_SEARCH` | `false` | 启用向量语义检索（需 `pip install sentence-transformers`，首次运行下载模型约 100MB） |
 ### 基本配置
 
 | 配置项 | 默认值 | 说明 |
@@ -218,6 +243,36 @@ copy .env.example .env
 | `HTMLRENDER_BROWSER` | `chromium` | 浏览器类型：`chromium` / `firefox` / `webkit` |
 | `HTMLRENDER_BROWSER_EXECUTABLE_PATH` | 空 | 浏览器可执行文件绝对路径。Windows 可用 Edge 替代 Chromium 以减少下载量 |
 
+
+## 十五、群聊学习（nonebot_plugin_groupmind）
+
+群聊学习为 bot 提供群级记忆、群画像统计与群风格卡。**默认全局关闭**，
+需要先在 `.env` 开启 `GROUP_LEARNING=true`，再由群主/管理员用 `/群学习 on` 逐群启用。
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `GROUP_LEARNING` | `false` | 总开关。关闭时全部群不采集、不学习 |
+| `GROUP_LEARN_DEFAULT` | `false` | 新群默认是否开启学习（建议保持关闭，由群主显式开启） |
+| `GROUP_MEMORY_EXTRACT_TIMES` | `12:30,20:30` | 群记忆批量提取时刻（每日多次，逗号分隔） |
+| `GROUP_STYLE_CARD_TIME` | `21:00` | 群风格卡每日生成时刻 |
+| `GROUP_STYLE_CARD_INTERVAL` | `500` | 或每累计 500 条群消息触发一次风格卡（取先到） |
+| `GROUP_STYLE_MODEL` | 空 | 群总结专用模型（可选，留空用主对话模型） |
+| `GROUP_CONTEXT_MAX_TOKENS` | `200` | 注入 system prompt 的群上下文块预算（token 估算值） |
+| `GROUP_MEMORY_TOP_K` | `3` | 注入的群记忆条数 |
+| `GROUP_ADAPTIVE_PROBABILITY` | `false` | 是否允许"氛围分"调节群回复概率（需 `GROUP_REPLY_PROBABILITY` > 0 才生效） |
+| `GROUP_HISTORY_KEEP` | `500` | 群消息流水保留条数（超出清理最旧） |
+
+### 群学习命令（`/群学习`）
+
+| 命令 | 权限 | 说明 |
+|------|------|------|
+| `/群学习 on` / `off` | 群主/管理员 | 开启/关闭本群学习 |
+| `/群学习 status` | 所有人 | 本群学习状态（记忆数、话题、活跃时段、风格卡） |
+| `/群学习 clear` | 群主/管理员 | 清空本群学习数据 |
+| `/群学习 summary` | 超级用户 | 手动触发一次群记忆提取与风格卡生成 |
+
+群数据存放于 `user_data/group_{群号}.db`（群记忆、消息流水、统计、风格卡），
+可通过 WebUI「记忆浏览」页的群列表查看与删除群记忆。
 ## 完整示例
 
 `.env.example` 中的每一项都带有默认值与说明注释，修改时请以 `.env.example` 为基准，避免遗漏或拼写错误。

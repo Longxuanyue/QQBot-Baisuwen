@@ -4,7 +4,7 @@ nonebot_plugin_profile - 用户画像系统
 从记忆库自动提取用户特征，构建结构化画像。
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from nonebot.plugin import PluginMetadata
 

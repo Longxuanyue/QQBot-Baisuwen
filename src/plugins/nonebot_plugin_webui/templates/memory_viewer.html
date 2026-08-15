@@ -80,7 +80,11 @@ async function selectUser(uid) {
     document.querySelector(`.user-item[data-uid="${uid}"]`)?.classList.add('active');
     document.getElementById('memory-placeholder').style.display = 'none';
     document.getElementById('memory-content').style.display = 'block';
-    document.getElementById('memory-title').textContent = `用户 ${uid} 的记忆`;
+    if (uid.startsWith('group:')) {
+        document.getElementById('memory-title').textContent = `群 ${uid.slice(6)} 的记忆`;
+    } else {
+        document.getElementById('memory-title').textContent = `用户 ${uid} 的记忆`;
+    }
     await loadMemories();
 }
 

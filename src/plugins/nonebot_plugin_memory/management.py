@@ -107,9 +107,10 @@ def upgrade_and_deduplicate(short_db: str = SHORT_TERM_DB, long_db: str = LONG_T
             conn_short.close()
 
 def _bucket_key(content: str) -> str:
-    """生成 hash-bucket 键：使用首个有意义的jieba分词，或内容前两个字符"""
+    """生成 hash-bucket 键：使用首个有意义的 jieba 分词（走 text_utils 词典），或内容前两个字符"""
     if JIEBA_AVAILABLE and content:
-        words = jieba.lcut(content)
+        from .text_utils import tokenize
+        words = tokenize(content)
         if words:
             return words[0]
     return content[:2] if content else ""

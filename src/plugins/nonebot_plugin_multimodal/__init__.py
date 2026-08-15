@@ -4,7 +4,7 @@ nonebot_plugin_multimodal - 多模态支持插件
 处理图片消息，提供可选的 LLM vision 图片理解能力。
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 from nonebot import logger
 from nonebot.plugin import PluginMetadata

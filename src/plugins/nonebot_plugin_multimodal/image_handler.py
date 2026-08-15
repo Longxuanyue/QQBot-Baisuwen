@@ -78,7 +78,8 @@ async def _safe_fetch_bytes(session: aiohttp.ClientSession, url: str,
     """
     current = url
     for _ in range(4):  # 最多 3 次重定向
-        ok, reason = _is_safe_download_url(current)
+        # socket.getaddrinfo 为阻塞调用，迁移到线程池避免卡住事件循环
+        ok, reason = await asyncio.to_thread(_is_safe_download_url, current)
         if not ok:
             logger.warning(f"[下载安全] 拒绝下载 {current}: {reason}")
             return None
@@ -262,24 +263,27 @@ async def handle_image_message(bot: Bot, event: MessageEvent,
 
     返回图片描述文本（如果分析成功），否则返回 None。
     调用者可以将描述文本注入到对话上下文中。
+
+    v2 优化：多张图片并发下载/分析，缩短消息处理耗时。
     """
     images = extract_image_segments(event)
     if not images:
         return None
 
-    descriptions = []
-    for img_info in images[:3]:  # 最多处理 3 张图片
+    async def _process_one(img_info: dict) -> str:
         local_path = await download_image(bot, img_info["url"], img_info["file_id"])
         if not local_path:
-            continue
+            return ""
 
         if ENABLE_VISION and llm_client:
             desc = await analyze_image_via_llm(llm_client, local_path)
             if desc:
-                descriptions.append(f"[图片内容: {desc}]")
-            else:
-                descriptions.append("[用户发送了一张图片]")
-        else:
-            descriptions.append("[用户发送了一张图片]")
+                return f"[图片内容: {desc}]"
+        return "[用户发送了一张图片]"
 
+    # 最多处理 3 张图片，并发执行
+    results = await asyncio.gather(
+        *(_process_one(img) for img in images[:3])
+    )
+    descriptions = [r for r in results if r]
     return "\n".join(descriptions) if descriptions else None

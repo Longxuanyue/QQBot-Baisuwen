@@ -37,6 +37,19 @@ class LLMConfig(BaseModel):
     api_base: str = Field("https://api.deepseek.com", env="DEEPSEEK_API_BASE")
     model: str = Field("deepseek-v4-pro", env="DEEPSEEK_MODEL")
     timeout: int = Field(60, env="HTTPX_TIMEOUT")
+    # ── 优化配置 ──
+    # 单次请求上下文预算（token 估算值），超出时按优先级裁剪历史/记忆/画像
+    max_context_tokens: int = Field(8192, env="LLM_MAX_CONTEXT_TOKENS")
+    # LLM 调用失败重试次数（429/5xx/网络错误时指数退避重试）
+    max_retries: int = Field(2, env="LLM_MAX_RETRIES")
+    # 重试退避基础间隔（秒），实际等待 = backoff * 2^(attempt-1)
+    retry_backoff: float = Field(1.0, env="LLM_RETRY_BACKOFF")
+    # 是否启用流式回复（增量发送+删除上一条，体验更流畅；默认关闭）
+    stream_reply: bool = Field(False, env="LLM_STREAM_REPLY")
+    # 记忆提取最小间隔（秒）：同一用户两次 LLM 记忆提取的最短间隔
+    extract_min_interval: int = Field(300, env="MEMORY_EXTRACT_MIN_INTERVAL")
+    # 记忆提取专用模型（留空则与主对话使用同一模型）
+    extract_model: str = Field("", env="MEMORY_EXTRACT_MODEL")
 
     @model_validator(mode='after')
     def _fallback_to_os_environ(self):
@@ -52,6 +65,25 @@ class LLMConfig(BaseModel):
             env_model = os.getenv("DEEPSEEK_MODEL", "")
             if env_model:
                 self.model = env_model
+
+        def _int(key: str, default: int) -> int:
+            v = os.getenv(key, "")
+            return int(v) if v else default
+
+        def _float(key: str, default: float) -> float:
+            v = os.getenv(key, "")
+            return float(v) if v else default
+
+        def _bool(key: str, default: bool) -> bool:
+            v = os.getenv(key, "")
+            return v.lower() == "true" if v else default
+
+        self.max_context_tokens = _int("LLM_MAX_CONTEXT_TOKENS", self.max_context_tokens)
+        self.max_retries = _int("LLM_MAX_RETRIES", self.max_retries)
+        self.retry_backoff = _float("LLM_RETRY_BACKOFF", self.retry_backoff)
+        self.stream_reply = _bool("LLM_STREAM_REPLY", self.stream_reply)
+        self.extract_min_interval = _int("MEMORY_EXTRACT_MIN_INTERVAL", self.extract_min_interval)
+        self.extract_model = os.getenv("MEMORY_EXTRACT_MODEL", self.extract_model)
         return self
 
 
@@ -229,6 +261,12 @@ class DialogConfig(BaseModel):
     """对话管理配置"""
     max_turns: int = Field(20, env="DIALOG_MAX_TURNS")
     session_ttl_seconds: int = Field(1800, env="DIALOG_SESSION_TTL")
+    # 会话轮数超过该值后，触发最早的半段对话的 LLM 滚动摘要（后台任务）
+    summary_threshold: int = Field(16, env="DIALOG_SUMMARY_THRESHOLD")
+    # 两次滚动摘要之间的最小间隔（秒），避免频繁调用 LLM
+    summary_min_interval: int = Field(600, env="DIALOG_SUMMARY_MIN_INTERVAL")
+    # 相同消息回复缓存有效期（秒），期间重复提问直接命中缓存
+    reply_cache_ttl: int = Field(600, env="REPLY_CACHE_TTL")
 
     @model_validator(mode='after')
     def _fallback_to_os_environ(self):
@@ -236,6 +274,12 @@ class DialogConfig(BaseModel):
         if env_val: self.max_turns = int(env_val)
         env_val = os.getenv("DIALOG_SESSION_TTL", "")
         if env_val: self.session_ttl_seconds = int(env_val)
+        env_val = os.getenv("DIALOG_SUMMARY_THRESHOLD", "")
+        if env_val: self.summary_threshold = int(env_val)
+        env_val = os.getenv("DIALOG_SUMMARY_MIN_INTERVAL", "")
+        if env_val: self.summary_min_interval = int(env_val)
+        env_val = os.getenv("REPLY_CACHE_TTL", "")
+        if env_val: self.reply_cache_ttl = int(env_val)
         return self
 
 
@@ -395,6 +439,44 @@ class PluginConfig(BaseSettings):
     @property
     def bot_nickname(self) -> str:
         return self.group_chat.bot_nickname
+
+    # ── 优化配置便捷属性 ──
+
+    @property
+    def max_context_tokens(self) -> int:
+        return self.llm.max_context_tokens
+
+    @property
+    def llm_max_retries(self) -> int:
+        return self.llm.max_retries
+
+    @property
+    def llm_retry_backoff(self) -> float:
+        return self.llm.retry_backoff
+
+    @property
+    def stream_reply(self) -> bool:
+        return self.llm.stream_reply
+
+    @property
+    def memory_extract_min_interval(self) -> int:
+        return self.llm.extract_min_interval
+
+    @property
+    def memory_extract_model(self) -> str:
+        return self.llm.extract_model
+
+    @property
+    def dialog_summary_threshold(self) -> int:
+        return self.dialog.summary_threshold
+
+    @property
+    def dialog_summary_min_interval(self) -> int:
+        return self.dialog.summary_min_interval
+
+    @property
+    def reply_cache_ttl(self) -> int:
+        return self.dialog.reply_cache_ttl
 
     # ── 工具方法 ──
 
