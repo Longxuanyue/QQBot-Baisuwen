@@ -190,3 +190,10 @@ src/plugins/nonebot_plugin_update_baisuwen/personality_traits.json
 !src/plugins/nonebot_plugin_memory/data/
 !src/plugins/nonebot_plugin_memory/data/jieba_dict.txt
 !src/plugins/nonebot_plugin_memory/data/aliases.json
+
+# 本地部署脚本与资源文件（仅本地使用，不入库）
+# 注意：start_bot.bat 已被跟踪，.gitignore 对其无效；
+#       本地改动请配合 `git update-index --skip-worktree start_bot.bat` 忽略（见下）
+start_bot.bat.bak
+/xiao_jiu_avatar.jpg
+/白苏文科普宣传.html
