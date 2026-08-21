@@ -5,6 +5,18 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-08-21
+
+### Added
+
+- 按群响应控制：`/群响应 on|off|reset|status` 命令（群主/管理员/超管可在群内逐群开关，超管可设置全局默认、查看/远程控制所有群）；关闭的群完全不响应消息（含 @ 与昵称呼唤），戳一戳也不回应；新群默认响应状态由 `GROUP_RESPONSE_DEFAULT` 控制
+- 群聊语音回复模式：`/群语音 auto|voice|text|reset` 命令（群主/管理员/超管可在群内逐群设置，超管可设置全局默认、列出所有显式设置群、远程设置指定群）；群聊语音模式与私聊 `/voicemode` 互相隔离，默认模式由 `GROUP_VOICE_DEFAULT` 控制
+- 群迎新插件 `nonebot_plugin_welcome`：新成员入群自动发送欢迎消息（默认“欢迎欢迎~”），超级用户可用 `/迎新 <内容>` 自定义内容、`/迎新` 查看、`/迎新 重置` 恢复默认
+
+### Changed
+
+- `nonebot_plugin_help` 升级至 0.4.0：新增从 matcher 动态提取 `on_command` 指令（含别名），未提供元数据的插件也能在 `/help` 中列出真实指令名
+
 ## [1.3.0] - 2026-08-15
 
 ### Added

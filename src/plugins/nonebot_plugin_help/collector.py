@@ -1,18 +1,19 @@
 """
 命令收集器：从所有已加载插件中收集指令信息。
 
-支持两种指令系统：
+支持三种指令系统：
 1. 原生 Nonebot2 指令（on_command）—— 通过 PluginMetadata.extra["commands"] 获取
-2. Alconna 指令（on_alconna）—— 通过 command_manager.get_commands() 获取
+2. matcher 动态提取 —— 从 CommandRule 中读取已注册的 on_command 指令（含别名）
+3. Alconna 指令（on_alconna）—— 通过 command_manager.get_commands() 获取
 """
 
-from typing import List, Dict, Any, Optional
-from nonebot import get_loaded_plugins, get_driver, logger
+from typing import Any, Optional
 
+from nonebot import get_loaded_plugins, logger
 
 # ── 已知插件指令的手动映射（作为元数据缺失时的后备） ──
 
-_KNOWN_COMMANDS: Dict[str, List[Dict[str, str]]] = {
+_KNOWN_COMMANDS: dict[str, list[dict[str, str]]] = {
     "nonebot_plugin_admin": [
         {"name": "/admin", "desc": "管理员命令面板（仅主人可用）"},
         {"name": "/admin status", "desc": "查看 Bot 服务状态"},
@@ -45,14 +46,25 @@ _KNOWN_COMMANDS: Dict[str, List[Dict[str, str]]] = {
         {"name": "/强制更新新闻", "desc": "手动触发数据爬取更新（仅主人）"},
     ],
     "nonebot_plugin_update_baisuwen": [
-        {"name": "/voicemode <auto|always|text>", "desc": "切换语音回复模式（仅私聊可用）"},
-        {"name": "（对话即响应）", "desc": "Bot 主对话管线 — 直接发消息即可触发 AI 回复"},
+        {
+            "name": "/voicemode <auto|always|text>",
+            "desc": "切换语音回复模式（仅私聊可用）",
+        },
+        {
+            "name": "（对话即响应）",
+            "desc": "Bot 主对话管线 — 直接发消息即可触发 AI 回复",
+        },
         {"name": "（戳一戳）", "desc": "在 QQ 中戳 Bot 会有随机反应"},
+    ],
+    "nonebot_plugin_welcome": [
+        {"name": "/迎新 <内容>", "desc": "自定义群迎新内容（仅超级用户）"},
+        {"name": "/迎新", "desc": "查看当前迎新内容（仅超级用户）"},
+        {"name": "（入群自动触发）", "desc": "有新成员入群时自动发送欢迎消息"},
     ],
 }
 
 # 商店插件的已知指令
-_STORE_COMMANDS: Dict[str, List[Dict[str, str]]] = {
+_STORE_COMMANDS: dict[str, list[dict[str, str]]] = {
     "nonebot_plugin_skland": [
         {"name": "/skland", "desc": "森空岛主命令 — 查看帮助"},
         {"name": "/skland bind", "desc": "绑定森空岛账号（Token / 二维码）"},
@@ -87,7 +99,45 @@ CATEGORY_LABELS = {
 }
 
 
-def collect_commands() -> List[Dict[str, Any]]:
+def _collect_matcher_commands(plugin: Any) -> list[dict[str, str]]:
+    """从插件注册的 matcher 中动态提取 on_command 指令（含别名）。
+
+    返回 [{"name": "/xxx", "desc": "", "source": "matcher"}]，按出现顺序去重。
+    """
+    try:
+        from nonebot.rule import CommandRule
+    except ImportError:
+        return []
+
+    commands: list[dict[str, str]] = []
+    seen: set = set()
+
+    for matcher in plugin.matcher:
+        rule = getattr(matcher, "rule", None)
+        checkers = getattr(rule, "checkers", ()) or ()
+        for checker in checkers:
+            # 规则检查器可能被 Dependent 包装，CommandRule 在 .call 上
+            call = getattr(checker, "call", checker)
+            if not isinstance(call, CommandRule):
+                continue
+            for tokens in getattr(call, "cmds", ()) or ():
+                if not tokens:
+                    continue
+                name = "/" + ".".join(tokens)
+                if name in seen:
+                    continue
+                seen.add(name)
+                commands.append(
+                    {
+                        "name": name,
+                        "desc": "",
+                        "source": "matcher",
+                    }
+                )
+    return commands
+
+
+def collect_commands() -> list[dict[str, Any]]:
     """收集所有已加载插件的指令信息。
 
     返回列表，每项格式：
@@ -96,7 +146,7 @@ def collect_commands() -> List[Dict[str, Any]]:
         "plugin_name": str,      # 显示名称（从 PluginMetadata 读取）
         "description": str,      # 插件简介
         "usage": str,            # 插件用法概览
-        "type": str,             # 插件类型（core/admin/game/tool/feature/library/application）
+        "type": str,             # 插件类型（core/admin/game/tool/feature/...）
         "category_label": str,   # 分类显示标签
         "commands": list,        # [{"name": str, "desc": str, "source": str}]
         "matcher_types": list,   # 该插件定义的 matcher 类型列表
@@ -109,15 +159,17 @@ def collect_commands() -> List[Dict[str, Any]]:
     # 尝试导入 Alconna 命令管理器
     try:
         from arclet.alconna import command_manager as alc_cmd_mgr
+
         _has_alconna = True
     except ImportError:
         _has_alconna = False
 
     # 构建 Alconna 命令 → 插件的映射
-    alconna_plugin_map: Dict[str, List[Dict[str, str]]] = {}
+    alconna_plugin_map: dict[str, list[dict[str, str]]] = {}
     if _has_alconna:
         try:
             from nonebot_plugin_alconna.uniseg import referent
+
             for cmd in alc_cmd_mgr.get_commands():
                 try:
                     ref = referent(cmd)
@@ -125,11 +177,13 @@ def collect_commands() -> List[Dict[str, Any]]:
                         pid = ref.matcher.plugin_id
                         if pid not in alconna_plugin_map:
                             alconna_plugin_map[pid] = []
-                        alconna_plugin_map[pid].append({
-                            "name": cmd.header_display,
-                            "desc": cmd.meta.description or "",
-                            "source": "alconna",
-                        })
+                        alconna_plugin_map[pid].append(
+                            {
+                                "name": cmd.header_display,
+                                "desc": cmd.meta.description or "",
+                                "source": "alconna",
+                            }
+                        )
                 except Exception:
                     continue
         except Exception as e:
@@ -175,18 +229,30 @@ def collect_commands() -> List[Dict[str, Any]]:
 
         # 2. 从 PluginMetadata.extra["commands"] 获取（兼容 dict 和对象）
         if plugin.metadata:
-            extra = plugin.metadata.get("extra", {}) if isinstance(plugin.metadata, dict) else plugin.metadata.extra
+            extra = (
+                plugin.metadata.get("extra", {})
+                if isinstance(plugin.metadata, dict)
+                else plugin.metadata.extra
+            )
             if extra:
                 extra_cmds = extra.get("commands", [])
                 for ec in extra_cmds:
                     if isinstance(ec, dict):
-                        commands.append({
-                            "name": ec.get("name", ""),
-                            "desc": ec.get("description", ec.get("desc", "")),
-                            "source": "metadata",
-                        })
+                        commands.append(
+                            {
+                                "name": ec.get("name", ""),
+                                "desc": ec.get("description", ec.get("desc", "")),
+                                "source": "metadata",
+                            }
+                        )
 
-        # 3. 从 Alconna 获取
+        # 3. 从 matcher 动态提取（on_command 指令，含别名）
+        matcher_cmds = _collect_matcher_commands(plugin)
+        for mc in matcher_cmds:
+            if not any(c["name"] == mc["name"] for c in commands):
+                commands.append(mc)
+
+        # 4. 从 Alconna 获取
         if plugin_id in alconna_plugin_map:
             for ac in alconna_plugin_map[plugin_id]:
                 # 避免重复（如果已知映射中已经有同名指令）
@@ -194,56 +260,67 @@ def collect_commands() -> List[Dict[str, Any]]:
                     commands.append(ac)
 
         # matcher 类型统计
-        matcher_types = list(set(
-            m.type for m in plugin.matcher if m.type
-        ))
+        matcher_types = list({m.type for m in plugin.matcher if m.type})
 
         has_commands = len(commands) > 0 or "command" in matcher_types
 
         # 即使没有显式指令，但有 command 类型 matcher，也添加占位
         if not commands and "command" in matcher_types:
-            commands.append({
-                "name": f"（{plugin_name} 的指令）",
-                "desc": f"该插件定义了指令但未提供详细帮助，请输入指令名称尝试",
-                "source": "auto",
-            })
+            commands.append(
+                {
+                    "name": f"（{plugin_name} 的指令）",
+                    "desc": "该插件定义了指令但未提供详细帮助，请输入指令名称尝试",
+                    "source": "auto",
+                }
+            )
 
-        result.append({
-            "plugin_id": plugin_id,
-            "plugin_name": plugin_name,
-            "description": description,
-            "usage": usage,
-            "type": plugin_type,
-            "category_label": CATEGORY_LABELS.get(plugin_type, "✨ 功能插件"),
-            "commands": commands,
-            "matcher_types": matcher_types,
-            "has_commands": has_commands,
-        })
+        result.append(
+            {
+                "plugin_id": plugin_id,
+                "plugin_name": plugin_name,
+                "description": description,
+                "usage": usage,
+                "type": plugin_type,
+                "category_label": CATEGORY_LABELS.get(plugin_type, "✨ 功能插件"),
+                "commands": commands,
+                "matcher_types": matcher_types,
+                "has_commands": has_commands,
+            }
+        )
 
     # 按类别排序：core → admin → feature → game → tool → application → library
     type_order = {
-        "core": 0, "admin": 1, "feature": 2, "game": 3,
-        "tool": 4, "application": 5, "library": 6,
+        "core": 0,
+        "admin": 1,
+        "feature": 2,
+        "game": 3,
+        "tool": 4,
+        "application": 5,
+        "library": 6,
     }
     result.sort(key=lambda p: (type_order.get(p["type"], 9), p["plugin_id"]))
 
     return result
 
 
-def find_plugin_commands(plugin_name: str) -> Optional[Dict[str, Any]]:
+def find_plugin_commands(plugin_name: str) -> Optional[dict[str, Any]]:
     """按插件标识符或显示名称查找插件的指令信息。"""
     all_plugins = collect_commands()
     plugin_name_lower = plugin_name.lower()
 
     for p in all_plugins:
-        if (plugin_name_lower == p["plugin_id"].lower()
-                or plugin_name_lower in p["plugin_id"].lower()
-                or plugin_name_lower == p["plugin_name"].lower()):
+        if (
+            plugin_name_lower == p["plugin_id"].lower()
+            or plugin_name_lower in p["plugin_id"].lower()
+            or plugin_name_lower == p["plugin_name"].lower()
+        ):
             return p
 
     # 模糊匹配
     for p in all_plugins:
-        pid_simple = p["plugin_id"].replace("nonebot_plugin_", "").replace("nonebot_", "")
+        pid_simple = (
+            p["plugin_id"].replace("nonebot_plugin_", "").replace("nonebot_", "")
+        )
         if plugin_name_lower in pid_simple.lower():
             return p
 

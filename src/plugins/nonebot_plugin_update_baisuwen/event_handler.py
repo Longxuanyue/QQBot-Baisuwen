@@ -24,6 +24,7 @@ from .llm_client import llm_client
 from .personality import get_system_prompt_with_personality
 from .token_budget import trim_messages, truncate_text
 from .utils import download_voice_file, silk_to_wav, audio_to_qq_voice
+from .group_response import is_group_enabled
 
 # ── 全局模型实例 ──
 asr_model = None
@@ -370,26 +371,52 @@ async def _stream_reply(
 
 # ── 辅助函数 ──
 
-def _should_use_voice(is_group: bool, user_id: str, *, incoming_voice: bool = False) -> bool:
+def _should_use_voice(
+    is_group: bool,
+    user_id: str,
+    group_id: Optional[int] = None,
+    *,
+    incoming_voice: bool = False,
+) -> bool:
     """判断是否应该使用语音回复
 
     :param is_group: 是否是群聊消息
     :param user_id: 用户 QQ 号
+    :param group_id: 群号（仅群聊时使用）
     :param incoming_voice: 用户发送的消息是否为语音（用于 auto 模式判断）
 
-    规则：
-    - 群聊始终返回 False（只发文字）
-    - 私聊根据用户设置的语音模式决定：
-      - always: 总是语音回复
-      - text:   总是文字回复
-      - auto:   语音进→语音出，文字进→文字出
+    优先级（从高到低）：
+    1. TTS 不可用（ENABLE_TTS=false 或模型加载失败）→ 永不语音
+    2. TTS_ALWAYS=true → 全局强制语音，覆盖所有会话级设置
+    3. 群聊 → 按该群的语音模式（/群语音，与私聊互相隔离）：
+       - always: 总是语音回复
+       - text:   总是文字回复
+       - auto:   语音进→语音出，文字进→文字出
+    4. 私聊 → 按用户设置的语音模式（/voicemode）：
+       - always: 总是语音回复
+       - text:   总是文字回复
+       - auto:   语音进→语音出，文字进→文字出
     """
     if not plugin_config.enable_tts or tts_model is None:
         return False
 
-    # 群聊始终文字回复
+    # 全局强制语音（管理员级总开关，覆盖群/用户的细粒度设置）
+    if plugin_config.tts_always:
+        return True
+
+    # 群聊：读取该群的语音模式（与私聊互相隔离）
     if is_group:
-        return False
+        try:
+            from .group_voice_mode import get_group_voice_mode
+            mode = get_group_voice_mode(group_id)
+        except Exception:
+            mode = "auto"
+        if mode == "always":
+            return True
+        elif mode == "text":
+            return False
+        else:  # auto: 语音进语音出，文字进文字出
+            return incoming_voice
 
     # 私聊：读取用户语音偏好
     try:
@@ -519,6 +546,13 @@ async def handle_message(bot: Bot, event: MessageEvent):
         logger.info(
             f"休眠时段 ({plugin_config.bot_sleep_start}–{plugin_config.bot_sleep_end})，"
             f"忽略消息 from {user_id}"
+        )
+        return
+
+    # 按群响应开关：关闭响应的群完全不响应（含 @、昵称呼唤与主动搭话）
+    if is_group and not is_group_enabled(event.group_id):
+        logger.info(
+            f"群 {event.group_id} 已关闭响应，忽略消息 from {user_id}"
         )
         return
     was_voice = False  # 追踪入站消息是否为语音
@@ -695,7 +729,9 @@ async def handle_message(bot: Bot, event: MessageEvent):
     messages = trim_messages(messages, plugin_config.max_context_tokens)
 
     # 语音模式判定（用于流式/语音发送决策）
-    use_voice = _should_use_voice(is_group, user_id, incoming_voice=was_voice)
+    use_voice = _should_use_voice(
+        is_group, user_id, group_id, incoming_voice=was_voice
+    )
 
     # ── 回复缓存：相同消息在 TTL 内直接复用，省一次 LLM 调用 ──
     cached_reply = _get_cached_reply(user_id, group_id, msg_text)

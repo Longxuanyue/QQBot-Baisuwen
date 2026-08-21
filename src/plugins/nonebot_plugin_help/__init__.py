@@ -3,12 +3,15 @@ nonebot_plugin_help - 统一指令帮助插件
 
 提供 /help 和 /帮助 命令，汇总所有已加载插件的可用指令。
 按类别分组展示，支持查询特定插件的详细指令。
+
+v0.4.0 新增：从 matcher 动态提取 on_command 指令，未提供元数据的
+插件也能在帮助中列出真实指令名。
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
-from nonebot import on_command, logger
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent, Message
+from nonebot import on_command
+from nonebot.adapters.onebot.v11 import Message
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 
@@ -18,7 +21,9 @@ from .collector import collect_commands, find_plugin_commands
 
 __plugin_meta__ = PluginMetadata(
     name="指令帮助",
-    description="统一指令帮助 — 汇总所有已加载插件的可用指令，支持分类浏览和插件详情查询",
+    description=(
+        "统一指令帮助 — 汇总所有已加载插件的可用指令，支持分类浏览和插件详情查询"
+    ),
     usage="发送 /help 查看全部指令索引；/help <插件名> 查看特定插件详情",
     type="application",
     homepage="https://github.com/baisuwen",
@@ -26,6 +31,10 @@ __plugin_meta__ = PluginMetadata(
     extra={
         "author": "baisuwen",
         "version": __version__,
+        "commands": [
+            {"name": "/help", "description": "查看所有可用指令的总索引"},
+            {"name": "/help <插件名>", "description": "查看指定插件的详细指令"},
+        ],
     },
 )
 
@@ -35,20 +44,22 @@ help_cmd = on_command("help", aliases={"帮助"}, priority=1, block=True)
 
 
 @help_cmd.handle()
-async def handle_help(bot: Bot, event: MessageEvent, arg: Message = CommandArg()):
+async def handle_help(arg: Message = CommandArg()) -> None:
     args_text = arg.extract_plain_text().strip()
 
-    if args_text:
-        # 查询特定插件
-        msg = _format_plugin_detail(args_text)
-    else:
-        # 总索引
-        msg = _format_overview()
+    msg = _format_plugin_detail(args_text) if args_text else _format_overview()
 
     await help_cmd.finish(msg)
 
 
+# ── 展示用常量 ──
+
+_MAX_CMD_NAME_LEN = 28  # 指令名超过该长度时换行显示
+_MAX_CMDS_SHOWN = 6  # 每个插件在总览中最多展示的指令数
+
+
 # ── 格式化函数 ──
+
 
 def _format_overview() -> str:
     """格式化所有插件的指令总索引，按类别分组。"""
@@ -77,21 +88,21 @@ def _format_overview() -> str:
         if p["description"]:
             lines.append(f"     {p['description']}")
 
-        # 指令列表（最多显示前 6 条）
-        shown = p["commands"][:6]
+        # 指令列表（最多显示前 N 条）
+        shown = p["commands"][:_MAX_CMDS_SHOWN]
         for cmd in shown:
             name = cmd["name"]
             desc = cmd.get("desc", "")
-            if len(name) > 28:
+            if len(name) > _MAX_CMD_NAME_LEN:
                 lines.append(f"     • {name}")
                 if desc:
                     lines.append(f"       {desc}")
             else:
-                lines.append(f"     • {name:<28} {desc}")
+                lines.append(f"     • {name:<{_MAX_CMD_NAME_LEN}} {desc}")
 
-        short_name = p['plugin_id'].replace('nonebot_plugin_', '')
-        if len(p["commands"]) > 6:
-            lines.append(f"     … 还有 {len(p['commands']) - 6} 条指令")
+        short_name = p["plugin_id"].replace("nonebot_plugin_", "")
+        if len(p["commands"]) > _MAX_CMDS_SHOWN:
+            lines.append(f"     … 还有 {len(p['commands']) - _MAX_CMDS_SHOWN} 条指令")
         lines.append(f"     🔍 /help {short_name} 查看详情")
 
     # 底部提示

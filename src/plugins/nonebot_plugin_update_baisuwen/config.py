@@ -308,6 +308,11 @@ class GroupChatConfig(BaseModel):
     reply_probability: float = Field(0.0, env="GROUP_REPLY_PROBABILITY")
     bot_nickname: str = Field("小玖", env="BOT_NICKNAME")
     reply_cooldown_seconds: float = Field(5.0, env="GROUP_REPLY_COOLDOWN")
+    # 新群/未显式设置群的默认响应状态（可用 /群响应 逐群覆盖）
+    response_default: bool = Field(True, env="GROUP_RESPONSE_DEFAULT")
+    # 群聊语音回复默认模式：auto（语音进语音出）/ always（总是语音）/ text（总是文字）
+    # 可用 /群语音 逐群覆盖；与私聊 /voicemode 互相隔离
+    voice_default: str = Field("auto", env="GROUP_VOICE_DEFAULT")
 
     @model_validator(mode='after')
     def _fallback_to_os_environ(self):
@@ -317,6 +322,10 @@ class GroupChatConfig(BaseModel):
         if env_val: self.bot_nickname = env_val
         env_val = os.getenv("GROUP_REPLY_COOLDOWN", "")
         if env_val: self.reply_cooldown_seconds = float(env_val)
+        env_val = os.getenv("GROUP_RESPONSE_DEFAULT", "")
+        if env_val: self.response_default = env_val.lower() == "true"
+        env_val = os.getenv("GROUP_VOICE_DEFAULT", "")
+        if env_val: self.voice_default = env_val
         return self
 
 
@@ -435,6 +444,14 @@ class PluginConfig(BaseSettings):
     @property
     def group_reply_probability(self) -> float:
         return self.group_chat.reply_probability
+
+    @property
+    def group_response_default(self) -> bool:
+        return self.group_chat.response_default
+
+    @property
+    def group_voice_default(self) -> str:
+        return self.group_chat.voice_default
 
     @property
     def bot_nickname(self) -> str:
