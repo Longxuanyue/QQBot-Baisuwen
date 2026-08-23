@@ -1,23 +1,22 @@
 === SUMMARY ===
-azurlane       n=  4 pend=False cats={'combat': 1, 'event': 3} emptyBan=0 bare=0 dups=0 http=0
-bluearchive    n= 19 pend=None  cats={'combat': 6, 'event': 2, 'gacha': 11} emptyBan=0 bare=0 dups=0 http=0
+azurlane       n=  8 pend=False cats={'combat': 4, 'event': 4} emptyBan=3 bare=0 dups=0 http=0
+bluearchive    n= 25 pend=None  cats={'combat': 9, 'event': 1, 'gacha': 15} emptyBan=0 bare=0 dups=0 http=0
 delta          n=  1 pend=False cats={'combat': 1} emptyBan=0 bare=0 dups=0 http=0
-endfield       n=  7 pend=None  cats={'gacha': 1, 'combat': 1, 'event': 5} emptyBan=0 bare=0 dups=0 http=0
-events         n=  7 pend=None  cats={'gacha': 5, 'combat': 2} emptyBan=1 bare=0 dups=0 http=0
-genshin        n= 18 pend=None  cats={'combat': 14, 'gacha': 3, 'web': 1} emptyBan=0 bare=0 dups=0 http=0
-gfl2           n=  6 pend=False cats={'combat': 6} emptyBan=0 bare=0 dups=0 http=0
-hearthstone    n=  6 pend=False cats={'combat': 3, 'event': 3} emptyBan=0 bare=0 dups=0 http=0
-naraka         n=  1 pend=False cats={'combat': 1} emptyBan=0 bare=0 dups=0 http=0
-nikke          n=  4 pend=False cats={'combat': 2, 'event': 2} emptyBan=0 bare=0 dups=0 http=0
-ptn            n=  0 pend=False cats={} emptyBan=0 bare=0 dups=0 http=0
+endfield       n=  6 pend=None  cats={'gacha': 2, 'event': 4} emptyBan=0 bare=0 dups=0 http=0
+events         n=  7 pend=None  cats={'gacha': 3, 'combat': 4} emptyBan=0 bare=0 dups=0 http=0
+genshin        n= 17 pend=None  cats={'combat': 12, 'gacha': 3, 'event': 1, 'web': 1} emptyBan=2 bare=0 dups=0 http=0
+gfl2           n=  3 pend=False cats={'combat': 2, 'event': 1} emptyBan=0 bare=0 dups=0 http=0
+hearthstone    n=  5 pend=False cats={'combat': 3, 'event': 2} emptyBan=0 bare=0 dups=0 http=0
+naraka         n=  2 pend=False cats={'combat': 2} emptyBan=0 bare=0 dups=0 http=0
+nikke          n=  4 pend=False cats={'combat': 4} emptyBan=0 bare=0 dups=0 http=0
+ptn            n=  3 pend=False cats={'combat': 3} emptyBan=0 bare=0 dups=0 http=0
 pvz2           n=  0 pend=False cats={} emptyBan=0 bare=0 dups=0 http=0
 reverse1999    n=  2 pend=False cats={'combat': 1, 'gacha': 1} emptyBan=2 bare=0 dups=0 http=0
 snowbreak      n=  1 pend=False cats={'combat': 1} emptyBan=0 bare=0 dups=0 http=0
 starrail       n=  3 pend=None  cats={'combat': 3} emptyBan=0 bare=0 dups=0 http=0
-wuwa           n=  9 pend=False cats={'combat': 2, 'gacha': 4, 'event': 2, 'web': 1} emptyBan=5 bare=0 dups=0 http=0
+wuwa           n=  5 pend=False cats={'combat': 1, 'gacha': 4} emptyBan=4 bare=0 dups=0 http=0
 zzz            n=  8 pend=None  cats={'combat': 7, 'gacha': 1} emptyBan=0 bare=0 dups=0 http=0
 === ISSUES (hard) ===
-ptn | EMPTY_NOT_PENDING | 
 pvz2 | EMPTY_NOT_PENDING | 
 === ISSUES (soft) ===
-hard=2 soft=0
+hard=1 soft=0
