@@ -17,6 +17,15 @@
   - 对局渲染：htmlrender（Playwright）棋盘图片 → PIL 图片兜底 → 文本棋盘三级降级；Bot 走法优先 Stockfish（`CHESS_STOCKFISH_PATH`），未配置时降级内置纯 Python minimax
   - 对局持久化：`data/chess_games.json`（对局）+ `data/chess_rank.db`（排行榜），超时自动回收
 
+## [1.5.2] - 2026-08-23
+
+### Fixed
+
+- 修复角色在情绪强烈时输出「（动作）」描写（如 `（尾巴炸了一下）`、`（后退半步）`）的问题：
+  - `output_rules` 新增 `no_action_description` 开关（默认开启），引擎渲染为独立的"输出格式铁律"块，明确列出禁止样例并强调"情绪越强烈越要克制"
+  - 强化 `response_format_hint`：明确禁止括号/星号动作、表情、神态描写（含 `（笑）`、`*摸摸头*`、`（脸红）` 等样例）
+  - `examples` 新增"情绪强烈但无动作描写"的对话范本（被吓到场景），用于对抗模型 RP 默认习惯
+
 ## [1.5.1] - 2026-08-23
 
 ### Fixed

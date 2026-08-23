@@ -225,6 +225,13 @@ def get_system_prompt_with_personality(memory_context: str, user_id: str = None,
             out_items.append(long_rule)
         _append_block(lines, "回复长度规则：", out_items)
 
+        # 输出格式铁律：禁止括号/星号动作描写（独立醒目块，防模型 RP 默认习惯）
+        if output_rules.get("no_action_description"):
+            _append_block(lines, "输出格式铁律：", [
+                "严禁使用括号或星号描写动作、表情或神态，如（笑）、（尾巴炸了一下）、（后退半步）、*摸摸头*、（脸红）等",
+                "所有情绪一律用语气词和句子本身表达；情绪越强烈越要克制，宁可多加语气词，也不准加动作描写",
+            ])
+
     # ── 7. 标点与表情规则（……/! 的情绪含义、emoji 默认关）──
     punct = info.get("punctuation_rules") or {}
     if isinstance(punct, dict):
