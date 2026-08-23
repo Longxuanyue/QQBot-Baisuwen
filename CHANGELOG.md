@@ -17,6 +17,17 @@
   - 对局渲染：htmlrender（Playwright）棋盘图片 → PIL 图片兜底 → 文本棋盘三级降级；Bot 走法优先 Stockfish（`CHESS_STOCKFISH_PATH`），未配置时降级内置纯 Python minimax
   - 对局持久化：`data/chess_games.json`（对局）+ `data/chess_rank.db`（排行榜），超时自动回收
 
+## [1.5.1] - 2026-08-23
+
+### Fixed
+
+- 主人身份判定统一改为 `.env` 中 `SUPERUSERS` 超管账号（原使用独立的 `OWNER_QQ` 且默认值硬编码为 2461292801），与项目其他插件的超管判定保持一致
+- 人设补充狼族兽人生理设定：拥有狼耳和狼尾，除此之外和普通人类一样（注入 `core_memories`，防止模型自由发挥）
+
+### Changed
+
+- `.env.example` 移除 `OWNER_QQ` 配置项，`SUPERUSERS` 注释补充其兼任人设"主人"判定的说明
+
 ## [1.5.0] - 2026-08-23
 
 ### Added

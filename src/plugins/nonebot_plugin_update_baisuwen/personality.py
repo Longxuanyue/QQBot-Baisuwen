@@ -107,9 +107,15 @@ def get_system_prompt_with_personality(memory_context: str, user_id: str = None,
         core_memories = info.get("core_memories", [])
         traits = info.get("personality_traits", [])
 
-    # 判断是否是特定主人（QQ号，可由 .env 的 OWNER_QQ 覆盖）
-    OWNER_QQ = os.getenv("OWNER_QQ", "2461292801")
-    is_owner = (user_id == OWNER_QQ)
+    # 判断是否为特定主人：必须是 .env 中 SUPERUSERS 配置的超管账号
+    # （与项目其他插件的超管判定保持一致，不再使用单独的 OWNER_QQ）
+    try:
+        superusers = get_driver().config.superusers
+        if not isinstance(superusers, (set, list, tuple)):
+            superusers = set()
+    except Exception:
+        superusers = set()
+    is_owner = (user_id in superusers)
 
     lines = []
     name = _resolve(info, "姓名", "name", default="白苏文")
