@@ -4,12 +4,14 @@
 接收 QQ 图片消息，下载并可选地通过 LLM vision API 进行理解。
 """
 
+import io
 import os
 import re
 import time
 import asyncio
 import base64
 import ipaddress
+import shutil
 import socket
 import urllib.parse
 from typing import Optional
@@ -204,30 +206,114 @@ def image_to_base64(image_path: str) -> Optional[str]:
     return None
 
 
-def extract_image_segments(event: MessageEvent) -> list:
-    """从消息事件中提取所有图片段"""
-    images = []
+async def _resolve_image_source(bot: Bot, seg) -> dict:
+    """从 image/file 消息段解析出可下载的图片来源。
+
+    返回 {"url": ...} 或 {"path": ...}（本地缓存路径），均无法解析时返回空 dict。
+    """
+    data = seg.data
+    url = data.get("url", "") or ""
+    if url:
+        return {"url": url}
+    file_key = data.get("file_id", "") or data.get("file", "") or ""
+    if not file_key:
+        logger.warning(f"[多模态] 图片段既无 url 也无 file/file_id，跳过: {data}")
+        return {}
+
+    # image 段优先 get_image，file 段用 get_file（NapCat/LLOneBot/Lagrange 均支持）
+    apis = ("get_image", "get_file") if seg.type == "image" else ("get_file", "get_image")
+    for api in apis:
+        try:
+            info = await bot.call_api(api, file=file_key)
+        except Exception as e:
+            logger.warning(f"[多模态] {api} 解析失败 (file={file_key}): {e!r}")
+            continue
+        if not isinstance(info, dict):
+            logger.warning(f"[多模态] {api} 返回异常: {info}")
+            continue
+        u = info.get("url", "") or ""
+        if u:
+            logger.info(f"[多模态] {api} 解析出图片 url (type={seg.type})")
+            return {"url": u}
+        p = info.get("path", "") or ""
+        if p:
+            logger.info(f"[多模态] {api} 返回本地缓存路径 (type={seg.type})")
+            return {"path": p}
+    return {}
+
+
+async def extract_image_segments(bot: Bot, event: MessageEvent) -> list:
+    """从消息事件中提取所有可下载的图片段（image 段 + 图片类 file 段）。
+
+    优先使用消息自带的 url；缺失时通过 OneBot get_image/get_file API
+    解析出 url 或本地缓存路径（协议端与 bot 同机部署时可直读），
+    避免不同协议实现下图片段无 url 导致静默跳过。
+    """
+    resolved: list[dict] = []
     for seg in event.message:
         if seg.type == "image":
-            url = seg.data.get("url", "")
-            file_id = seg.data.get("file", "") or seg.data.get("file_id", "")
-            if url:
-                images.append({"url": url, "file_id": file_id})
-    return images
+            pass
+        elif seg.type == "file":
+            # 文件段仅当文件名看起来是图片时才处理
+            fname = str(seg.data.get("file", "") or "").lower()
+            ext = os.path.splitext(fname)[1]
+            if ext not in IMAGE_EXT_WHITELIST:
+                logger.warning(
+                    f"[多模态] 文件段非图片（{seg.data.get('file')}），跳过"
+                )
+                continue
+        else:
+            continue
+        src = await _resolve_image_source(bot, seg)
+        if not src:
+            logger.warning(
+                f"[多模态] 图片段无法解析出下载来源，跳过 | 段类型={seg.type} | 数据={seg.data}"
+            )
+            continue
+        resolved.append({
+            **src,
+            "file_id": seg.data.get("file_id", "") or seg.data.get("file", "") or "",
+        })
+    if not resolved:
+        logger.warning(
+            f"[多模态] 未提取到可下载的图片段 | 消息段类型: {[s.type for s in event.message]}"
+        )
+    return resolved
 
 
-async def analyze_image_via_llm(llm_client, image_path: str) -> str:
+async def analyze_image_via_llm(
+    llm_client, image_path: str, model: Optional[str] = None,
+    max_tokens: int = 4096,
+) -> str:
     """
     通过 LLM Vision API 分析图片内容。
+    :param model: 视觉模型名（如 deepseek-v4-flash-vision-exp），
+                  传入后覆盖 llm_client 的默认模型。
+    :param max_tokens: 输出 token 上限。该模型带推理，复杂图片会先消耗
+                  较多推理 token，预算过小会导致 content 为空，需留足余量。
 
-    注意：这需要 LLM API 支持 vision 能力（如 DeepSeek 的 vision 模型，
-    或 OpenAI 的 GPT-4V）。当前 DeepSeek Chat 模型不完全支持图片。
-    此功能作为预留接口。
+    注意：这需要 LLM API 支持 vision 能力。DeepSeek 多模态模型
+    （deepseek-v4-flash-vision-exp）可通过 LLM_VISION_MODEL 配置使用。
     """
     if not ENABLE_VISION:
         return ""
 
-    base64_img = image_to_base64(image_path)
+    # 统一转码为 JPEG：GIF/WEBP/BMP 等格式也能被视觉 API 接受；
+    # 转码失败（如文件损坏）则退回原始字节
+    base64_img = ""
+    try:
+        from PIL import Image as PILImage
+        with PILImage.open(image_path) as im:
+            im.load()
+            logger.info(
+                f"[多模态] 图片解码成功 | 格式={im.format} 尺寸={im.size}"
+            )
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, format="JPEG", quality=92)
+            base64_img = base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        logger.warning(f"[多模态] 图片转码失败，使用原始字节: {e!r}")
+        base64_img = image_to_base64(image_path)
     if not base64_img:
         return ""
 
@@ -245,11 +331,16 @@ async def analyze_image_via_llm(llm_client, image_path: str) -> str:
                 }
             ]
         }]
+        kwargs = {}
+        if model:
+            kwargs["model"] = model
         response = await llm_client.chat_completion(
             messages=messages,
             temperature=0.3,
-            max_tokens=200
+            max_tokens=max_tokens,
+            **kwargs,
         )
+        logger.info(f"[多模态] 视觉模型返回: {response[:150]!r}")
         return response.strip()
     except Exception as e:
         logger.error(f"图片分析失败: {e}")
@@ -257,7 +348,9 @@ async def analyze_image_via_llm(llm_client, image_path: str) -> str:
 
 
 async def handle_image_message(bot: Bot, event: MessageEvent,
-                               llm_client=None) -> Optional[str]:
+                               llm_client=None,
+                               model: Optional[str] = None,
+                               max_tokens: int = 4096) -> Optional[str]:
     """
     处理包含图片的消息。
 
@@ -266,17 +359,38 @@ async def handle_image_message(bot: Bot, event: MessageEvent,
 
     v2 优化：多张图片并发下载/分析，缩短消息处理耗时。
     """
-    images = extract_image_segments(event)
+    images = await extract_image_segments(bot, event)
     if not images:
+        logger.warning(
+            f"[多模态] 未提取到可下载的图片段 | 消息段类型: "
+            f"{[s.type for s in event.message]}"
+        )
         return None
 
     async def _process_one(img_info: dict) -> str:
-        local_path = await download_image(bot, img_info["url"], img_info["file_id"])
-        if not local_path:
-            return ""
+        # 本地缓存路径（get_file 返回的协议端本地文件，与 bot 同机部署）直读
+        if img_info.get("path"):
+            src = img_info["path"]
+            if not os.path.isfile(src):
+                logger.warning(f"[多模态] 本地缓存图片不存在: {src}")
+                return ""
+            os.makedirs(IMAGE_CACHE_DIR, exist_ok=True)
+            fname = os.path.basename(src) or _safe_cache_filename(src, ".img")
+            local_path = os.path.join(IMAGE_CACHE_DIR, fname)
+            try:
+                shutil.copyfile(src, local_path)
+            except OSError as e:
+                logger.warning(f"[多模态] 本地图片复制失败: {e!r}")
+                return ""
+        else:
+            local_path = await download_image(bot, img_info["url"], img_info["file_id"])
+            if not local_path:
+                return ""
 
         if ENABLE_VISION and llm_client:
-            desc = await analyze_image_via_llm(llm_client, local_path)
+            desc = await analyze_image_via_llm(
+                llm_client, local_path, model=model, max_tokens=max_tokens
+            )
             if desc:
                 return f"[图片内容: {desc}]"
         return "[用户发送了一张图片]"

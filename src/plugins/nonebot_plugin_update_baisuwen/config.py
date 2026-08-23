@@ -50,6 +50,14 @@ class LLMConfig(BaseModel):
     extract_min_interval: int = Field(300, env="MEMORY_EXTRACT_MIN_INTERVAL")
     # 记忆提取专用模型（留空则与主对话使用同一模型）
     extract_model: str = Field("", env="MEMORY_EXTRACT_MODEL")
+    # 纯文本辅助任务默认模型（记忆提取/对话摘要/群记忆/风格卡等）
+    # 留空则跟随主对话模型；显式设置 MEMORY_EXTRACT_MODEL / GROUP_STYLE_MODEL 优先级更高
+    text_model: str = Field("deepseek-v4-flash", env="LLM_TEXT_MODEL")
+    # 图片理解专用视觉模型（analyze_image_via_llm 使用）
+    vision_model: str = Field("deepseek-v4-flash-vision-exp", env="LLM_VISION_MODEL")
+    # 视觉分析输出上限（token）。该模型带推理，复杂图片会先消耗较多
+    # 推理 token，预算过小会导致最终 content 为空，需留足余量
+    vision_max_tokens: int = Field(4096, env="LLM_VISION_MAX_TOKENS")
 
     @model_validator(mode='after')
     def _fallback_to_os_environ(self):
@@ -84,6 +92,15 @@ class LLMConfig(BaseModel):
         self.stream_reply = _bool("LLM_STREAM_REPLY", self.stream_reply)
         self.extract_min_interval = _int("MEMORY_EXTRACT_MIN_INTERVAL", self.extract_min_interval)
         self.extract_model = os.getenv("MEMORY_EXTRACT_MODEL", self.extract_model)
+        env_model = os.getenv("LLM_TEXT_MODEL", "")
+        if env_model:
+            self.text_model = env_model
+        env_model = os.getenv("LLM_VISION_MODEL", "")
+        if env_model:
+            self.vision_model = env_model
+        env_val = os.getenv("LLM_VISION_MAX_TOKENS", "")
+        if env_val:
+            self.vision_max_tokens = int(env_val)
         return self
 
 
@@ -482,6 +499,18 @@ class PluginConfig(BaseSettings):
     @property
     def memory_extract_model(self) -> str:
         return self.llm.extract_model
+
+    @property
+    def llm_text_model(self) -> str:
+        return self.llm.text_model
+
+    @property
+    def llm_vision_model(self) -> str:
+        return self.llm.vision_model
+
+    @property
+    def llm_vision_max_tokens(self) -> int:
+        return self.llm.vision_max_tokens
 
     @property
     def dialog_summary_threshold(self) -> int:

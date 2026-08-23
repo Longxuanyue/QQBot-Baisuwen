@@ -23,14 +23,13 @@ if "TORCH_CPP_LOG_LEVEL" not in os.environ:
 if "TORCH_LOGS" not in os.environ:
     os.environ["TORCH_LOGS"] = "ERROR"
 
-from .config import GPT_SOVITS_CONFIG, GPT_SOVITS_DEFAULT_CHARACTER
+from .config import GPT_SOVITS_CONFIG, GPT_SOVITS_DEFAULT_CHARACTER, GPT_SOVITS_ROOT as _GPT_SOVITS_ROOT
 from .ref_audio_index import ReferenceAudioIndex
 from .character_router import CharacterRouter
 
 # ── 导入 GPT-SoVITS 核心模块 ──
 # GPT-SoVITS 代码内部多处使用 os.getcwd() 拼接相对路径，
-# 需要临时切换到 GPT-SoVITS 根目录进行导入和初始化。
-_GPT_SOVITS_ROOT = "D:/GPT-SoVITS-main"
+# 需要临时切换到 GPT-SoVITS 根目录进行导入和初始化（根目录由 .env 的 GPT_SOVITS_ROOT 控制）。
 _GPT_SOVITS_MODULE = os.path.join(_GPT_SOVITS_ROOT, "GPT_SoVITS")
 
 _original_cwd = os.getcwd()

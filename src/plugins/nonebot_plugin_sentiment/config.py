@@ -1,10 +1,29 @@
-"""情感分析配置"""
+"""情感分析配置（全部由 .env 驱动）"""
+
+import os
+from pathlib import Path
+
+
+# ── 显式加载 .env，避免因插件导入顺序导致配置为空 ──
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).resolve().parent.parent.parent.parent / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path, override=False)
+except ImportError:
+    pass
+
+
+def _bool(key: str, *, default: bool) -> bool:
+    v = os.getenv(key, "")
+    return v.lower() == "true" if v else default
+
 
 # 是否启用情感分析
-ENABLE_SENTIMENT = True
+ENABLE_SENTIMENT = _bool("ENABLE_SENTIMENT", default=True)
 
 # 分析方式: "llm" (使用 DeepSeek) 或 "rule" (规则匹配) 或 "both"
-SENTIMENT_MODE = "rule"
+SENTIMENT_MODE = os.getenv("SENTIMENT_MODE", "rule")
 
 # 情绪类别
 EMOTION_LABELS = ["happy", "sad", "angry", "anxious", "calm", "excited", "neutral"]

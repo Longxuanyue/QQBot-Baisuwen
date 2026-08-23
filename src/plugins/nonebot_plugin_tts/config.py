@@ -14,10 +14,13 @@ except ImportError:
 DEFAULT_MODEL_PATH = os.getenv("TTS_MODEL_PATH", "models/G_latest.pth")
 DEFAULT_CONFIG_PATH = os.getenv("TTS_CONFIG_PATH", "models/finetune_speaker.json")
 
+# GPT-SoVITS 根目录（GPT-SoVITS 代码内部用 os.getcwd() 拼接相对路径，需指向其根目录）
+GPT_SOVITS_ROOT = os.getenv("GPT_SOVITS_ROOT", "D:/GPT-SoVITS-main")
+
 # GPT-SoVITS 配置
 GPT_SOVITS_CONFIG = os.getenv(
     "GPT_SOVITS_CONFIG",
-    "D:/GPT-SoVITS-main/GPT_SoVITS/configs/tts_infer.yaml"
+    os.path.join(GPT_SOVITS_ROOT, "GPT_SoVITS", "configs", "tts_infer.yaml")
 )
 GPT_SOVITS_VERSION = os.getenv("GPT_SOVITS_VERSION", "v2")
 GPT_SOVITS_DEFAULT_CHARACTER = os.getenv("GPT_SOVITS_DEFAULT_CHARACTER", "陈千语")
