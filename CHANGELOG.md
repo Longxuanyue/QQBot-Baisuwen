@@ -5,6 +5,46 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Added
+
+- 国际象棋插件 `nonebot_plugin_chess`（仅私聊人机对弈）：
+  - 练习局：`/国际象棋` 开局（可选执白/黑与 简单/普通/困难 三档难度），支持 `/悔棋`
+  - 计分挑战局：`/挑战 <对手>` 挑战 青铜~终极 六档固定分对手，Elo 段位分结算（前 5 局定级期），仅挑战局计分
+  - 排行榜：`/排行榜` 按分数排名，`/我的分数` 查看个人分数、战绩与最高挑战/最高击败
+  - 新手图文教程：`/国际象棋 教程` 程序化生成的棋盘讲解图（走法高亮、易位/吃过路兵/升变图解）
+  - 对局渲染：htmlrender（Playwright）棋盘图片 → PIL 图片兜底 → 文本棋盘三级降级；Bot 走法优先 Stockfish（`CHESS_STOCKFISH_PATH`），未配置时降级内置纯 Python minimax
+  - 对局持久化：`data/chess_games.json`（对局）+ `data/chess_rank.db`（排行榜），超时自动回收
+
+## [1.5.0] - 2026-08-23
+
+### Added
+
+- 人设系统全面升级，`personality_traits.json` 新增约束字段（旧字段全部保留，缺失时引擎自动兜底）：
+  - `core_identity`：核心形象正反双轨约束（是什么 / 不是什么）
+  - `scene_rules` + `scene_emotion_map`：场景化行为规则，按情感分析结果动态注入对应场景块
+  - `output_rules`：回复长度控制（默认 2~3 句 / 上限 4 句 / 一句一行 / 长回复触发条件）
+  - `punctuation_rules`：`……`/`!` 情绪化标点、emoji/颜文字默认关闭
+  - `anti_meta_rules`：防破功约束（不说自己是 AI/模型/按设定回答）
+  - `banned_phrases`：AI 腔禁用套话负面清单
+  - `naturalness_guard`：自然度护栏（不过度使用设定词、不复述人设）
+  - `response_decision`：回复前决策流程
+  - `memory_policy`：记忆与人设职责分离规则
+  - `examples`：对话范本，帮助对齐角色语气
+
+### Changed
+
+- 人设引擎 `personality.py` 重写：新字段渲染、中英文键兼容、`age=0` 视为未填写
+- 情感分析结果驱动场景规则动态注入（联动 `nonebot_plugin_sentiment`）
+- 人设模板 `personality_traits.template.json` 与文档 `docs/personality.md` 同步更新
+
+### Fixed
+
+- 修复人设基本信息注入失效：`gender/age/race/birthday/constellation` 之前读取中文键失败且年龄/种族硬编码为「14岁狼族兽人少女」，现改为从 JSON 正确读取
+- 修复主人称呼硬编码：改为从 `core_memories` 自动解析
+- 修复非主人视角下核心记忆全部隐藏时残留空标题
+
 ## [1.4.0] - 2026-08-21
 
 ### Added
@@ -83,7 +123,8 @@
   - 群聊支持、WebUI 管理面板、定时休眠
   - 明日方舟-卫戍协议工具箱
 
-[Unreleased]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.4.0...HEAD
+[1.5.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.4.0...v1.5.0
 [1.3.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/Longxuanyue/QQBot-Baisuwen/compare/v1.1.0...v1.2.0

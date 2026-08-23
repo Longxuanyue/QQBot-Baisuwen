@@ -175,8 +175,10 @@ async def generate_and_store_memory_llm(
 
     try:
         kwargs = {}
-        if plugin_config.memory_extract_model:
-            kwargs["model"] = plugin_config.memory_extract_model
+        # 纯文本任务：优先记忆提取专用模型，其次统一纯文本模型（deepseek-v4-flash）
+        model = plugin_config.memory_extract_model or plugin_config.llm_text_model
+        if model:
+            kwargs["model"] = model
         response = await llm_client.chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
@@ -276,10 +278,14 @@ async def _summarize_and_compact(
             f"请用2-3句话总结以下对话的要点（主题、关键信息、双方的约定与喜好）。\n"
             f"只输出总结内容：\n{lines}"
         )
+        kwargs = {}
+        if plugin_config.llm_text_model:
+            kwargs["model"] = plugin_config.llm_text_model
         summary = await llm_client.chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=120,
+            **kwargs,
         )
         summary = summary.strip()
         if summary:
@@ -470,11 +476,15 @@ async def _build_system_prompt_with_context(
     except Exception:
         pass
 
-    # 3. 情感分析（如果有）
+    # 3. 情感分析（如果有）：情感提示文本 + 情感标签（供人设场景规则动态注入）
     emotion_hint = ""
+    emotion = None
     try:
         from ..nonebot_plugin_sentiment import sentiment_analyzer
         emotion_hint = sentiment_analyzer.get_emotional_context(msg_text)
+        _emotion_result = sentiment_analyzer.analyze(msg_text)
+        if _emotion_result.get("confidence", 0) >= 0.5:
+            emotion = _emotion_result.get("emotion")
     except Exception:
         pass
 
@@ -486,8 +496,8 @@ async def _build_system_prompt_with_context(
     except Exception:
         pass
 
-    # 5. 人设 + 记忆 → system prompt
-    system_prompt = get_system_prompt_with_personality(memory_context, user_id)
+    # 5. 人设 + 记忆 → system prompt（情感标签用于动态注入场景规则）
+    system_prompt = get_system_prompt_with_personality(memory_context, user_id, emotion=emotion)
 
     # 6. 追加附加信息
     additions = []
@@ -518,9 +528,14 @@ async def _handle_image_segments(bot: Bot, event: MessageEvent) -> str:
     """处理消息中的图片段，返回图片描述文本"""
     try:
         from ..nonebot_plugin_multimodal import handle_image_message
-        desc = await handle_image_message(bot, event, llm_client)
+        desc = await handle_image_message(
+            bot, event, llm_client,
+            model=plugin_config.llm_vision_model or None,
+            max_tokens=plugin_config.llm_vision_max_tokens,
+        )
         return desc or ""
-    except Exception:
+    except Exception as e:
+        logger.warning(f"图片处理异常: {e!r}")
         return ""
 
 
@@ -587,10 +602,39 @@ async def handle_message(bot: Bot, event: MessageEvent):
                         msg_text = voice_text if not msg_text else msg_text
                 break
 
-    # 图片处理（多模态，可通过 ENABLE_MULTIMODAL 关闭）
-    if plugin_config.enable_multimodal:
-        image_desc = ""
-        has_image = any(seg.type == "image" for seg in event.message)
+    # ── 是否会产生回复：提前判定（与图片内容无关）。放在识图之前，
+    #    避免为「不回复的带图消息」白白调用一次视觉模型 ──
+    will_reply = True
+    group_id = event.group_id if is_group else None
+    if is_group:
+        if event.to_me:
+            pass  # @ 必定回复
+        else:
+            now = time.time()
+            last_time = _last_reply_time.get(event.group_id, 0)
+            if now - last_time < plugin_config.group_chat.reply_cooldown_seconds:
+                will_reply = False
+            else:
+                # 自适应回复概率：基础概率 × 群氛围分（需开启 GROUP_ADAPTIVE_PROBABILITY）
+                prob = plugin_config.group_reply_probability
+                if prob > 0:
+                    try:
+                        from ..nonebot_plugin_groupmind import groupmind
+                        prob *= groupmind.get_adaptive_factor(event.group_id)
+                    except Exception:
+                        pass
+                if random.random() >= prob:
+                    will_reply = False
+                else:
+                    # 通过概率门限，记录本次回复时间，供后续冷却计算使用
+                    _last_reply_time[event.group_id] = now
+
+    # 图片处理（多模态，可通过 ENABLE_MULTIMODAL 关闭；仅当确定会回复时才识图）
+    if will_reply and plugin_config.enable_multimodal:
+        # image 段（正常图片消息）或 file 段（以文件形式发送的图片）
+        has_image = any(
+            seg.type in ("image", "file") for seg in event.message
+        )
         if has_image:
             image_desc = await _handle_image_segments(bot, event)
             if image_desc:
@@ -600,11 +644,8 @@ async def handle_message(bot: Bot, event: MessageEvent):
         logger.info("消息文本为空，跳过处理")
         return
 
-    # 群聊限流逻辑
-    group_id = event.group_id if is_group else None
-
+    # 群聊：记录消息历史 + 群聊学习采集（对每条群消息都执行，与是否回复无关）
     if is_group:
-        # 记录群聊消息
         group_chat_history[event.group_id].append((
             event.user_id, msg_text, 0
         ))
@@ -616,24 +657,8 @@ async def handle_message(bot: Bot, event: MessageEvent):
         except Exception as e:
             logger.debug(f"群聊学习采集失败: {e}")
 
-        if event.to_me:
-            pass  # 必定回复
-        else:
-            now = time.time()
-            last_time = _last_reply_time.get(event.group_id, 0)
-            if now - last_time < plugin_config.group_chat.reply_cooldown_seconds:
-                return
-            # 自适应回复概率：基础概率 × 群氛围分（需开启 GROUP_ADAPTIVE_PROBABILITY）
-            prob = plugin_config.group_reply_probability
-            if prob > 0:
-                try:
-                    from ..nonebot_plugin_groupmind import groupmind
-                    prob *= groupmind.get_adaptive_factor(event.group_id)
-                except Exception:
-                    pass
-            if random.random() >= prob:
-                return
-            _last_reply_time[event.group_id] = now
+        if not will_reply:
+            return
 
     # 确认回复后才初始化记忆管理器（惰性建库，避免为不回复的群消息创建空库）
     mem_mgr = MemoryManager.get_manager(user_id)

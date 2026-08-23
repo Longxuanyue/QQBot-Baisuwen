@@ -5,7 +5,7 @@ nonebot_plugin_update_baisuwen — 白苏文核心插件
 多轮对话、记忆系统、语音交互、多模态理解。
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 from nonebot import get_driver, logger
 from nonebot.plugin import PluginMetadata
